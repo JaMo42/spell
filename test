@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import difflib
+
+def printf (fmt, *args, color=""):
+  fmt = fmt.replace ("{}", "\x1b[1m{}\x1b[22m")
+  print (color + fmt.format (*args) + "\x1b[0m")
+
+
+def diff (a, b):
+  for line in difflib.ndiff (a.split ('\n'), b.split ('\n')):
+    if line[0] == '-':
+      sys.stdout.write ("\x1b[31m")
+    elif line[0] == '+':
+      sys.stdout.write ("\x1b[32m")
+    sys.stdout.write ("  ")
+    sys.stdout.write (line)
+    sys.stdout.write ("\x1b[0m\n")
+
+
+def main ():
+  os.chdir ("tests")
+  programs = [
+    f for f in os.listdir ()
+    if f.endswith (".exe") and not os.path.isdir (f)
+  ]
+  expected_outputs = [program.replace (".exe", ".expected") for program in programs]
+
+  for program, expected_file in zip (programs, expected_outputs):
+    if not os.path.exists (expected_file):
+      printf ("Missing file {}, skipping test {}", expected_file, program,
+              color="\x1b[33m")
+      continue
+    printf ("Running: {}", program, color="\x1b[32m")
+    p = subprocess.run ((f"./{program}",), stdout=subprocess.PIPE)
+    output = p.stdout.decode ("utf-8").strip ()
+    if os.name == "nt":
+      output = output.replace ("\r\n", '\n')
+    expected = open (expected_file).read ().strip ()
+    if output != expected:
+      printf ("Failed: {}", program, color="\x1b[31m")
+      diff (expected, output)
+
+
+if __name__ == "__main__":
+  main ()
