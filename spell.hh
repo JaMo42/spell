@@ -374,12 +374,13 @@ public:
 
   Exit_Status wait () {
     if (status_ != -1)
-      return Exit_Status (status_);
+      return Exit_Status (WEXITSTATUS (status_));
   #ifdef _WIN32
     DWORD status;
-    if (!stdin_inherited_)
+    if (!stdin_inherited_) {
       // TODO: does not prevent deadlock on Windows
       CloseHandle (stdin_);
+    }
     WaitForSingleObject (id (), INFINITE);
     GetExitCodeProcess (id (), &status);
     CloseHandle (id ());
@@ -387,11 +388,12 @@ public:
   #else
     int status;
     pid_t wpid;
-    if (!stdin_inherited_)
+    if (!stdin_inherited_) {
       close (stdin_);
+    }
     while ((wpid = waitpid (id (), &status, 0)) > 0) {}
     status_ = status;
-    return Exit_Status (status);
+    return Exit_Status (WEXITSTATUS (status));
   #endif
   }
 
@@ -676,19 +678,25 @@ private:
     if (pid == 0) {
       // Set streams
       if (stdout_ != Stream::Inherit) {
-        close (out.read ());
         dup2 (out.write (), STDOUT_FILENO);
-        close (out.write ());
+        if (stdout_ == Stream::Piped) {
+          close (out.read ());
+          close (out.write ());
+        }
       }
       if (stderr_ != Stream::Inherit) {
-        close (err.read ());
         dup2 (err.write (), STDERR_FILENO);
-        close (err.write ());
+        if (stderr_ == Stream::Piped) {
+          close (err.read ());
+          close (err.write ());
+        }
       }
       if (stdin_ != Stream::Inherit) {
-        close (in.write ());
         dup2 (in.read (), STDIN_FILENO);
-        close (in.read ());
+        if (stdin_ == Stream::Piped) {
+          close (in.write ());
+          close (in.read ());
+        }
       }
       // Arguments
       std::vector<char *> p_args;
@@ -717,11 +725,11 @@ private:
       exit (1);
     }
 
-    if (stdin_ != Stream::Inherit)
+    if (stdin_ == Stream::Piped)
       close (in.read ());
-    if (stdout_ != Stream::Inherit)
+    if (stdout_ == Stream::Piped)
       close (out.write ());
-    if (stderr_ != Stream::Inherit)
+    if (stderr_ == Stream::Piped)
       close (err.write ());
 
     return Child (pid, stdin_ == Stream::Inherit, in.write (), out.read (), err.read ());
