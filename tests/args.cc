@@ -6,8 +6,8 @@ int main () {
   int number = 1;
 
   auto run = [&number]<class... Args> (Args... args) {
-    auto s = spell::Spell ("programs/print_args.exe");
-    (s.arg (args), ...);
+    auto s = spell::Spell ("programs/print_args.exe")
+      .args (args...);
     std::cout << number++ << std::endl;
     if (auto c = s.cast (); c.has_value ()) {
       c->wait ();

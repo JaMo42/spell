@@ -470,6 +470,12 @@ public:
     return *this;
   }
 
+  template <class... Args>
+  Self& args (const Args&... args) {
+    (args_.emplace_back (args), ...);
+    return *this;
+  }
+
   Args& get_args () {
     return args_;
   }
