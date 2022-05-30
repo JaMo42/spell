@@ -274,7 +274,7 @@ private:
   detail::Env_Set data_;
 };
 
-enum class Stream {
+enum class Stdio {
   Default,
   Inherit,
   Piped,
@@ -446,9 +446,9 @@ public:
     args_ {},
     env_ (std::nullopt),
     working_dir_ (std::filesystem::current_path ()),
-    stdout_ (Stream::Default),
-    stderr_ (Stream::Default),
-    stdin_ (Stream::Default)
+    stdout_ (Stdio::Default),
+    stderr_ (Stdio::Default),
+    stdin_ (Stdio::Default)
   {}
 
   std::string_view get_program () const {
@@ -554,17 +554,17 @@ public:
   ////////////////////////////////////////////////////////////////////////
   // Streams
 
-  Self& set_stdout (Stream cfg) {
+  Self& set_stdout (Stdio cfg) {
     stdout_ = cfg;
     return *this;
   }
 
-  Self& set_stderr (Stream cfg) {
+  Self& set_stderr (Stdio cfg) {
     stderr_ = cfg;
     return *this;
   }
 
-  Self& set_stdin (Stream cfg) {
+  Self& set_stdin (Stdio cfg) {
     stdin_ = cfg;
     return *this;
   }
@@ -573,18 +573,18 @@ public:
   // Running
 
   std::optional<Child> cast () {
-    return do_cast (Stream::Inherit);
+    return do_cast (Stdio::Inherit);
   }
 
   std::optional<Exit_Status> cast_status () {
-    auto child = do_cast (Stream::Inherit);
+    auto child = do_cast (Stdio::Inherit);
     if (child.has_value ())
       return child->wait ();
     return std::nullopt;
   }
 
   std::optional<Output> cast_output () {
-    auto child = do_cast (Stream::Piped);
+    auto child = do_cast (Stdio::Piped);
     if (child.has_value ()) {
       return child->wait_with_output ();
     }
@@ -592,29 +592,29 @@ public:
   }
 
 private:
-  std::optional<Child> do_cast (Stream default_cfg) {
+  std::optional<Child> do_cast (Stdio default_cfg) {
     using namespace detail;
     Pipe out, err, in;
 
-    auto set_pipe = [default_cfg](Pipe &p, Stream &cfg, auto s) {
-      if (cfg == Stream::Default) {
+    auto set_pipe = [default_cfg](Pipe &p, Stdio &cfg, auto s) {
+      if (cfg == Stdio::Default) {
         cfg = default_cfg;
       }
       switch (cfg) {
-      break; case Stream::Inherit: {
+      break; case Stdio::Inherit: {
       #ifdef _WIN32
         p = Pipe::inherit (s);
       #else
         p = Pipe::inherit (s);
       #endif
       }
-      break; case Stream::Piped: {
+      break; case Stdio::Piped: {
         p = Pipe ();
       }
-      break; case Stream::Null: {
+      break; case Stdio::Null: {
         p = Pipe::null ();
       }
-      case Stream::Default:;
+      case Stdio::Default:;
       }
     };
 
@@ -665,14 +665,14 @@ private:
 
     CloseHandle (process_info.hThread);
 
-    if (stdin_ != Stream::Inherit)
+    if (stdin_ != Stdio::Inherit)
       CloseHandle (in.read ());
-    if (stdout_ != Stream::Inherit)
+    if (stdout_ != Stdio::Inherit)
       CloseHandle (out.write ());
-    if (stderr_ != Stream::Inherit)
+    if (stderr_ != Stdio::Inherit)
       CloseHandle (err.write ());
 
-    return Child (process_info.hProcess, stdin_ == Stream::Inherit, in.write (), out.read (), err.read ());
+    return Child (process_info.hProcess, stdin_ == Stdio::Inherit, in.write (), out.read (), err.read ());
 
   #else
 
@@ -683,23 +683,23 @@ private:
     const pid_t pid = fork ();
     if (pid == 0) {
       // Set streams
-      if (stdout_ != Stream::Inherit) {
+      if (stdout_ != Stdio::Inherit) {
         dup2 (out.write (), STDOUT_FILENO);
-        if (stdout_ == Stream::Piped) {
+        if (stdout_ == Stdio::Piped) {
           close (out.read ());
           close (out.write ());
         }
       }
-      if (stderr_ != Stream::Inherit) {
+      if (stderr_ != Stdio::Inherit) {
         dup2 (err.write (), STDERR_FILENO);
-        if (stderr_ == Stream::Piped) {
+        if (stderr_ == Stdio::Piped) {
           close (err.read ());
           close (err.write ());
         }
       }
-      if (stdin_ != Stream::Inherit) {
+      if (stdin_ != Stdio::Inherit) {
         dup2 (in.read (), STDIN_FILENO);
-        if (stdin_ == Stream::Piped) {
+        if (stdin_ == Stdio::Piped) {
           close (in.write ());
           close (in.read ());
         }
@@ -731,14 +731,14 @@ private:
       exit (1);
     }
 
-    if (stdin_ == Stream::Piped)
+    if (stdin_ == Stdio::Piped)
       close (in.read ());
-    if (stdout_ == Stream::Piped)
+    if (stdout_ == Stdio::Piped)
       close (out.write ());
-    if (stderr_ == Stream::Piped)
+    if (stderr_ == Stdio::Piped)
       close (err.write ());
 
-    return Child (pid, stdin_ == Stream::Inherit, in.write (), out.read (), err.read ());
+    return Child (pid, stdin_ == Stdio::Inherit, in.write (), out.read (), err.read ());
   #endif
   }
 
@@ -747,9 +747,9 @@ private:
   Args args_;
   std::optional<Env> env_;
   std::filesystem::path working_dir_;
-  Stream stdout_;
-  Stream stderr_;
-  Stream stdin_;
+  Stdio stdout_;
+  Stdio stderr_;
+  Stdio stdin_;
 };
 
 void ignore_sigchld () {

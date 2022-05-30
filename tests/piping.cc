@@ -5,7 +5,7 @@ int main () {
   std::cout << 1 << std::endl;
   {
     auto c = spell::Spell ("programs/echo_stdin_char.exe")
-      .set_stdin (spell::Stream::Piped)
+      .set_stdin (spell::Stdio::Piped)
       .cast ()
         .value ();
     spell::write (c.get_stdin (), "A", 1);
@@ -15,7 +15,7 @@ int main () {
   std::cout << 2 << std::endl;
   {
     auto c = spell::Spell ("programs/echo_stdin_char.exe")
-      .set_stdin (spell::Stream::Null)
+      .set_stdin (spell::Stdio::Null)
       .cast ()
         .value ();
     c.wait ();
@@ -24,7 +24,7 @@ int main () {
   std::cout << 3 << std::endl;
   {
     auto c = spell::Spell ("programs/echo_stdin_char.exe")
-      .set_stdin (spell::Stream::Piped)
+      .set_stdin (spell::Stdio::Piped)
       .cast ()
         .value ();
     c.wait ();
