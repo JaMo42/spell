@@ -373,9 +373,9 @@ public:
   }
 
   Exit_Status wait () {
-    if (status_ != -1)
-      return Exit_Status (WEXITSTATUS (status_));
   #ifdef _WIN32
+    if (status_ != -1)
+      return Exit_Status (status_);
     DWORD status;
     if (!stdin_inherited_) {
       // TODO: does not prevent deadlock on Windows
@@ -386,6 +386,8 @@ public:
     CloseHandle (id ());
     return Exit_Status (status);
   #else
+    if (status_ != -1)
+      return Exit_Status (WEXITSTATUS (status_));
     int status;
     pid_t wpid;
     if (!stdin_inherited_) {
@@ -647,6 +649,9 @@ private:
         environment.push_back ('\0');
       }
     }
+
+    // TODO: SetHandleInformation (parent_end_of_pipe, HANDLE_FLAG_INHERIT, 0)
+    //       Do not inherit the parents pipe ends
 
     if (!CreateProcessA (
       nullptr,
