@@ -40,7 +40,13 @@ int main () {
       .cast_output ()
         .value ();
     if (c.stderr_.empty ()) {
+      // Remove newline
+    #ifdef _WIN32
+      // Need to remove \r\n
+      c.stdout_[c.stdout_.size () - 2] = 0;
+    #else
       c.stdout_.back () = 0;
+    #endif
       std::cout << reinterpret_cast<char *> (c.stdout_.data ()) << std::endl;
     }
   }
