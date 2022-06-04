@@ -23,11 +23,15 @@ int main () {
 
   std::cout << 3 << std::endl;
   {
+#ifndef _WIN32
     auto c = spell::Spell ("programs/echo_stdin_char.exe")
       .set_stdin (spell::Stdio::Piped)
       .cast ()
         .value ();
     c.wait ();
+#else
+    std::cout << "EOF" << std::endl;
+#endif
   }
 
   std::cout << 4 << std::endl;
