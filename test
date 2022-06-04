@@ -9,6 +9,16 @@ def printf (fmt, *args, color=""):
   print (color + fmt.format (*args) + "\x1b[0m")
 
 
+def print_show_special (string, stream=sys.stdout):
+  for c in string:
+    if not c.isprintable ():
+      stream.write (f"\x1b[2m\\x{ord (c):0>2x}\x1b[22m")
+    elif c == ' ':
+      stream.write ("\x1b[2m.\x1b[22m")
+    else:
+      stream.write (c)
+
+
 def diff (a, b):
   for line in difflib.ndiff (a.split ('\n'), b.split ('\n')):
     if line[0] == '-':
@@ -16,7 +26,11 @@ def diff (a, b):
     elif line[0] == '+':
       sys.stdout.write ("\x1b[32m")
     sys.stdout.write ("  ")
-    sys.stdout.write (line)
+    if line[0] == '?':
+      sys.stdout.write (line)
+    else:
+      sys.stdout.write (line[:2])
+      print_show_special (line[2:])
     sys.stdout.write ("\x1b[0m\n")
 
 
