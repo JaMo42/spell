@@ -387,7 +387,6 @@ public:
       return Exit_Status (status_);
     DWORD status;
     if (stdin_is_piped_) {
-      // TODO: does not prevent deadlock on Windows
       CloseHandle (stdin_);
     }
     WaitForSingleObject (id (), INFINITE);
@@ -613,11 +612,7 @@ private:
       }
       switch (cfg) {
       break; case Stdio::Inherit: {
-      #ifdef _WIN32
         p = Pipe::inherit (s);
-      #else
-        p = Pipe::inherit (s);
-      #endif
       }
       break; case Stdio::Piped: {
         p = Pipe ();
@@ -625,7 +620,7 @@ private:
       break; case Stdio::Null: {
         p = Pipe::null ();
       }
-      case Stdio::Default:;
+      break; case Stdio::Default:;
       }
     };
 
@@ -645,12 +640,14 @@ private:
     startup_info.hStdInput = in.read ();
     startup_info.dwFlags |= STARTF_USESTDHANDLES;
 
+    // Arguments
     std::string command_line {program_};
     for (auto &arg : args_) {
       command_line.push_back (' ');
       command_line.append (arg);
     }
 
+    // Environment
     std::string environment {};
     if (env_.has_value ()) {
       for (const auto &env : *env_) {
@@ -659,8 +656,16 @@ private:
       }
     }
 
-    // TODO: SetHandleInformation (parent_end_of_pipe, HANDLE_FLAG_INHERIT, 0)
-    //       Do not inherit the parents pipe ends
+    // Don't inherit parent ends of pipes
+    if (stdin_ == Stdio::Piped) {
+      SetHandleInformation (in.write (), HANDLE_FLAG_INHERIT, 0);
+    }
+    if (stdout_ == Stdio::Piped) {
+      SetHandleInformation (out.read (), HANDLE_FLAG_INHERIT, 0);
+    }
+    if (stderr_ == Stdio::Piped) {
+      SetHandleInformation (err.read (), HANDLE_FLAG_INHERIT, 0);
+    }
 
     if (!CreateProcessA (
       nullptr,
@@ -679,11 +684,11 @@ private:
 
     CloseHandle (process_info.hThread);
 
-    if (stdin_ != Stdio::Inherit)
+    if (stdin_ == Stdio::Piped)
       CloseHandle (in.read ());
-    if (stdout_ != Stdio::Inherit)
+    if (stdout_ == Stdio::Piped)
       CloseHandle (out.write ());
-    if (stderr_ != Stdio::Inherit)
+    if (stderr_ == Stdio::Piped)
       CloseHandle (err.write ());
 
     return Child (process_info.hProcess, stdin_ == Stdio::Piped, in.write (), out.read (), err.read ());
