@@ -32,7 +32,7 @@ int main () {
   std::cout << 4 << std::endl;
   {
     auto s = spell::Spell ("").env_clear ();
-    auto env = s.get_envs ();
+    auto &env = s.get_envs ();
     env.set ("one", "1");
     env.set ("two", "2");
     env.set ("three", "3");
@@ -44,5 +44,14 @@ int main () {
     for (auto i : vars) {
       std::cout << i << std::endl;
     }
+  }
+
+  std::cout << 5 << std::endl;
+  {
+    auto s = spell::Spell ("").env_clear ();
+    auto &env = s.get_envs ();
+    env.set ("a", "2");
+    env.set ("a", "1");
+    std::cout << env["a"] << std::endl;
   }
 }

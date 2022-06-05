@@ -194,11 +194,6 @@ public:
     if (load) {
     #ifdef _WIN32
       LPCH envp = GetEnvironmentStrings ();
-      /*  Var1=Value1\0
-          Var2=Value2\0
-          Var3=Value3\0
-          ...
-          VarN=ValueN\0\0 */
       std::size_t len;
       while ((len = std::strlen (envp)) != 0) {
         data_.emplace (envp);
@@ -225,10 +220,11 @@ public:
 
   void set (std::string_view key, std::string_view value) {
     if (auto it = data_.find (key); it != data_.end ()) {
-      auto var = std::move (*it);
-      var.value (value);
-      data_.erase (it);
-      data_.insert (var);
+      // The hashset gives us a constant iterator as we shouldn't mutate
+      // elements of a set. However both hashing and comparison of `Env_Var`s
+      // only depends on the key part so we can safely change the value here.
+      auto &x = const_cast<detail::Env_Var &> (*it);
+      x.value (value);
     }
     else {
       data_.emplace (key, value);
@@ -400,7 +396,7 @@ public:
   }
 
   Output wait_with_output () {
-    Output o (wait ());
+    Output o {wait ()};
     read_stream (stdout_, o.stdout_);
     read_stream (stderr_, o.stderr_);
     return o;
