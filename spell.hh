@@ -8,6 +8,7 @@
 #include <optional>
 #include <filesystem>
 #include <span>
+#include <mutex>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -136,6 +137,7 @@ public:
   }
 
   static Pipe null () {
+    static std::once_flag once_flag;
   #ifdef _WIN32
     static HANDLE h = CreateFileA (
       "nul",
@@ -146,10 +148,20 @@ public:
       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
       NULL
     );
+    std::call_once (once_flag, []() {
+      std::atexit ([]() {
+        CloseHandle (h);
+      });
+    });
     return Pipe (h, h);
   #else
     static FILE *s = fopen ("/dev/null", "r+");
     static int h = fileno (s);
+    std::call_once (once_flag, []() {
+      std::atexit ([]() {
+        fclose (s);
+      });
+    });
     return Pipe (h, h);
   #endif
   }

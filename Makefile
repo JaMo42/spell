@@ -3,7 +3,7 @@ export CXX=clang++
 all: build-tests
 
 spell.hh.gch: spell.hh
-	$(CXX) -std=c++20 spell.hh #2>/dev/null
+	$(CXX) -std=c++20 spell.hh -g
 
 build-tests: spell.hh.gch
 	$(MAKE) -C tests/programs

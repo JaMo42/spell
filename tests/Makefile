@@ -7,7 +7,7 @@ BIN=$(patsubst %.cc,%.exe,$(SRC))
 all: $(BIN)
 
 %.exe: %.cc ../spell.hh
-	$(CXX) $(CXXFLAGS) -o $@ $<
+	$(CXX) $(CXXFLAGS) -o $@ $< -g
 
 clean:
 	rm -f $(BIN)
