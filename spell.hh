@@ -314,11 +314,12 @@ bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
 #ifdef _WIN32
   static char buf[16];
   DWORD read;
+  bool success;
   // Can't get number of bytes in anonymous pipe ahead of time
   do {
-    ReadFile (handle, buf, sizeof (buf), &read, nullptr);
+    success = ReadFile (handle, buf, sizeof (buf), &read, nullptr);
     out.insert (out.end (), buf, buf + read);
-  } while (read);
+  } while (success && read > 0);
   return !out.empty ();
 #else
   int bytes;
@@ -335,10 +336,10 @@ bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
 
 class Child {
 protected:
-  explicit Child (Pid pid, bool ii, Pipe_Handle i, Pipe_Handle o, Pipe_Handle e)
+  explicit Child (Pid pid, bool p, Pipe_Handle i, Pipe_Handle o, Pipe_Handle e)
   : pid_ (pid),
     status_ (-1),
-    stdin_inherited_ (ii),
+    stdin_is_piped_ (p),
     stdin_ (i),
     stdout_ (o),
     stderr_ (e)
@@ -373,7 +374,7 @@ public:
     if (status_ != -1)
       return Exit_Status (status_);
     DWORD status;
-    if (!stdin_inherited_) {
+    if (stdin_is_piped_) {
       // TODO: does not prevent deadlock on Windows
       CloseHandle (stdin_);
     }
@@ -386,7 +387,7 @@ public:
       return Exit_Status (WEXITSTATUS (status_));
     int status;
     pid_t wpid;
-    if (!stdin_inherited_) {
+    if (stdin_is_piped_) {
       close (stdin_);
     }
     while ((wpid = waitpid (id (), &status, 0)) > 0) {}
@@ -429,7 +430,7 @@ public:
 private:
   Pid pid_;
   int status_;
-  bool stdin_inherited_;
+  bool stdin_is_piped_;
   Pipe_Handle stdin_;
   Pipe_Handle stdout_;
   Pipe_Handle stderr_;
@@ -673,7 +674,7 @@ private:
     if (stderr_ != Stdio::Inherit)
       CloseHandle (err.write ());
 
-    return Child (process_info.hProcess, stdin_ == Stdio::Inherit, in.write (), out.read (), err.read ());
+    return Child (process_info.hProcess, stdin_ == Stdio::Piped, in.write (), out.read (), err.read ());
 
   #else
 
@@ -739,7 +740,7 @@ private:
     if (stderr_ == Stdio::Piped)
       close (err.write ());
 
-    return Child (pid, stdin_ == Stdio::Inherit, in.write (), out.read (), err.read ());
+    return Child (pid, stdin_ == Stdio::Piped, in.write (), out.read (), err.read ());
   #endif
   }
 
