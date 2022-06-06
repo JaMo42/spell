@@ -139,37 +139,85 @@ inline void close_pipe (Pipe_Handle h) {
 #endif
 }
 
+} // namespace detail
 
-class Pipe {
-  Pipe (Pipe_Handle r, Pipe_Handle w)
-  : read_handle_ (r),
-    write_handle_ (w)
+class Anonymous_Pipe {
+  Anonymous_Pipe (Pipe_Handle h)
+  : inner_ (h)
   {}
+
+  template <class T>
+  struct Pipes_Base {
+    using Self = Pipes_Base<T>;
+
+    T read;
+    T write;
+
+    Self& operator= (Self &&other) {
+      read = std::move (other.read);
+      write = std::move (other.write);
+      return *this;
+    }
+
+    void drop () {
+      read.drop ();
+      write.drop ();
+    }
+  };
 
 public:
-  Pipe ()
-  : read_handle_ (INVALID_PIPE),
-    write_handle_ (INVALID_PIPE)
+  using Pipes = Pipes_Base<Anonymous_Pipe>;
+
+public:
+  Anonymous_Pipe ()
+  : inner_ (INVALID_PIPE)
   {}
 
-  static Pipe create () {
+  Anonymous_Pipe (Anonymous_Pipe &&from)
+  : inner_ (from.handle ())
+  {
+    from.inner_ = INVALID_PIPE;
+  }
+
+  ~Anonymous_Pipe () {
+    drop ();
+  }
+
+  Anonymous_Pipe& operator= (Anonymous_Pipe &&from) {
+    inner_ = from.take ();
+    return *this;
+  }
+
+  static Pipes create () {
   #ifdef _WIN32
     SECURITY_ATTRIBUTES sa = {
       .nLength = sizeof (SECURITY_ATTRIBUTES),
       .lpSecurityDescriptor = nullptr,
       .bInheritHandle = true
     };
-    Pipe p{};
-    CreatePipe (&p.read_handle_, &p.write_handle_, &sa, 0);
-    return p;
+    HANDLE r = INVALID_HANDLE_VALUE, w = INVALID_HANDLE_VALUE;
+    CreatePipe (&r, &w, &sa, 0);
+    return Pipes {r, w};
   #else
     int p[2];
-    pipe (p);
-    return Pipe (p[0], p[1]);
+    pipe2 (p, O_CLOEXEC);
+    return Pipes {p[0], p[1]};
   #endif
   }
 
-  static Pipe null () {
+  #ifdef _WIN32
+  static Pipes create_inherit (int device) {
+    const HANDLE h = GetStdHandle (device);
+    return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
+  }
+  #else
+  static Pipes create_inherit (FILE *stream) {
+    const int h = fileno (stream);
+    return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
+  }
+  #endif
+
+  static Pipes create_null () {
     static std::once_flag once_flag;
   #ifdef _WIN32
     static HANDLE h = CreateFileA (
@@ -195,37 +243,117 @@ public:
       });
     });
   #endif
-    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
+    return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
   }
 
-#ifdef _WIN32
-  static Pipe inherit (int stream) {
-    const HANDLE h = GetStdHandle (stream);
-    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
-  }
-#else
-  static Pipe inherit (FILE *stream) {
-    const int h = fileno (stream);
-    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
-  }
-#endif
-
-  Pipe_Handle read () {
-    return read_handle_;
+  Pipe_Handle handle () const {
+    return inner_;
   }
 
-  Pipe_Handle write () {
-    return write_handle_;
+  [[nodiscard]] Pipe_Handle take () {
+    const auto h = handle ();
+    inner_ = INVALID_PIPE;
+    return h;
+  }
+
+  void drop () {
+    if (inner_ != INVALID_PIPE) {
+      detail::close_pipe (inner_);
+      inner_ = INVALID_PIPE;
+    }
+  }
+
+  std::optional<std::size_t> read (auto *buf, std::size_t count) {
+  #ifdef _WIN32
+    DWORD nread;
+    if (ReadFile (handle (), reinterpret_cast<void *> (buf), count, &nread, nullptr)) {
+      return nread;
+    } else {
+      return std::nullopt;
+    }
+  #else
+    if (auto n = ::read (handle (), reinterpret_cast<void *> (buf), count); n >= 0) {
+      return n;
+    }
+    else {
+      return std::nullopt;
+    }
+  #endif
+  }
+
+  std::optional<std::size_t> read_all (std::vector<char> &out) {
+  #ifdef _WIN32
+    static char buf[64];
+    DWORD nread;
+    bool success;
+    do {
+      if ((success = ReadFile (handle (), buf, sizeof (buf), &nread, nullptr))) {
+        out.insert (out.end (), buf, buf + nread);
+      }
+    } while (success && nread > 0);
+    return success;
+  #else
+    int bytes;
+    if (ioctl (handle (), FIONREAD, &bytes) < 0) {
+      return std::nullopt;
+    }
+    if (bytes) {
+      out.resize (bytes);
+      if (auto r = read (out.data (), bytes); r.has_value ()) {
+        out.resize (r.value ());
+        return r;
+      }
+      out.clear ();
+      return std::nullopt;
+    }
+    else {
+      out.clear ();
+      return 0;
+    }
+  #endif
+  }
+
+  std::optional<std::size_t> write (auto *buf, std::size_t count) {
+  #ifdef _WIN32
+    DWORD written;
+    if (WriteFile (handle (), reinterpret_cast<const void *> (buf), count, &written, nullptr)) {
+      return written;
+    } else {
+      return std::nullopt;
+    }
+  #else
+    if (auto n = ::write (handle (), reinterpret_cast<const void *> (buf), count); n >= 0) {
+      return n;
+    }
+    else {
+      return std::nullopt;
+    }
+  #endif
+  }
+
+  bool write_all (const std::vector<char> &data) {
+    const char *p = data.data ();
+    std::size_t left = data.size ();
+    while (left) {
+      if (auto r = write (p, left); r.has_value ()) {
+        p += r.value ();
+        left -= r.value ();
+      }
+      else {
+        return false;
+      }
+    }
+    return true;
   }
 
 private:
-  Pipe_Handle read_handle_;
-  Pipe_Handle write_handle_;
+  Pipe_Handle inner_;
 };
 
-} // namespace detail
+using Pipes = Anonymous_Pipe::Pipes;
 
 using Args = std::vector<std::string>;
+
 
 class Env {
 public:
@@ -314,6 +442,7 @@ private:
   detail::Env_Set data_;
 };
 
+
 enum class Stdio {
   Default,
   Inherit,
@@ -349,81 +478,19 @@ struct Output {
   {}
 
   Exit_Status status;
-  std::vector<char8_t> stdout_;
-  std::vector<char8_t> stderr_;
-};
-
-
-inline bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
-#ifdef _WIN32
-  static char buf[16];
-  DWORD read;
-  bool success;
-  // Can't get number of bytes in anonymous pipe ahead of time
-  do {
-    success = ReadFile (handle, buf, sizeof (buf), &read, nullptr);
-    out.insert (out.end (), buf, buf + read);
-  } while (success && read > 0);
-  return !out.empty ();
-#else
-  int bytes;
-  ioctl (handle, FIONREAD, &bytes);
-  if (bytes) {
-    out.resize (bytes);
-    ::read (handle, out.data (), bytes);
-    return true;
-  }
-  return false;
-#endif
-}
-
-
-class Child_Stream {
-public:
-  Child_Stream (Pipe_Handle h)
-  : handle_ (h)
-  {}
-
-  Child_Stream (Child_Stream &&from)
-  : handle_ (from.handle_)
-  {
-    from.handle_ = INVALID_PIPE;
-  }
-
-  ~Child_Stream () {
-    drop ();
-  }
-
-  Pipe_Handle handle () const {
-    return handle_;
-  }
-
-  void drop () {
-    if (handle_ != INVALID_PIPE) {
-      detail::close_pipe (handle_);
-      handle_ = INVALID_PIPE;
-    }
-  }
-
-  [[nodiscard]] Pipe_Handle take () {
-    const auto r = handle ();
-    handle_ = INVALID_PIPE;
-    return r;
-  }
-
-private:
-  Pipe_Handle handle_;
+  std::vector<char> stdout_;
+  std::vector<char> stderr_;
 };
 
 
 class Child {
 protected:
-  explicit Child (Pid pid, Pipe_Handle i, Pipe_Handle o, Pipe_Handle e)
+  Child (Pid pid, Anonymous_Pipe &&i, Anonymous_Pipe &&o, Anonymous_Pipe &&e)
   : pid_ (pid),
     status_ (-1),
-    stdin_ (i),
-    stdout_ (o),
-    stderr_ (e)
+    stdin_ (std::move (i)),
+    stdout_ (std::move (o)),
+    stderr_ (std::move (e))
   {}
   friend class Spell;
 
@@ -476,8 +543,8 @@ public:
 
   Output wait_with_output () {
     Output o {wait ()};
-    read_stream (stdout_.handle (), o.stdout_);
-    read_stream (stderr_.handle (), o.stderr_);
+    stdout_.read_all (o.stdout_);
+    stderr_.read_all (o.stderr_);
     return o;
   }
 
@@ -493,25 +560,24 @@ public:
   #endif
   }
 
-  Child_Stream& get_stdin () {
+  Anonymous_Pipe& get_stdin () {
     return stdin_;
   }
 
-  Child_Stream& get_stdout () {
+  Anonymous_Pipe& get_stdout () {
     return stdout_;
   }
 
-  Child_Stream& get_stderr () {
+  Anonymous_Pipe& get_stderr () {
     return stderr_;
   }
 
 private:
   Pid pid_;
   int status_;
-  bool stdin_is_piped_;
-  Child_Stream stdin_;
-  Child_Stream stdout_;
-  Child_Stream stderr_;
+  Anonymous_Pipe stdin_;
+  Anonymous_Pipe stdout_;
+  Anonymous_Pipe stderr_;
 };
 
 
@@ -671,21 +737,21 @@ public:
 private:
   std::optional<Child> do_cast (Stdio default_cfg) {
     using namespace detail;
-    Pipe out, err, in;
+    Pipes out, err, in;
 
-    auto set_pipe = [default_cfg](Pipe &p, Stdio &cfg, auto s) {
+    auto set_pipe = [default_cfg](Pipes &p, Stdio &cfg, auto s) {
       if (cfg == Stdio::Default) {
         cfg = default_cfg;
       }
       switch (cfg) {
       break; case Stdio::Inherit: {
-        p = Pipe::inherit (s);
+        p = Anonymous_Pipe::create_inherit (s);
       }
       break; case Stdio::Piped: {
-        p = Pipe::create ();
+        p = Anonymous_Pipe::create ();
       }
       break; case Stdio::Null: {
-        p = Pipe::null ();
+        p = Anonymous_Pipe::create_null ();
       }
       break; case Stdio::Default:;
       }
@@ -702,9 +768,9 @@ private:
     STARTUPINFO startup_info = {};
     ZeroMemory (&startup_info, sizeof (STARTUPINFO));
     startup_info.cb = sizeof (STARTUPINFO);
-    startup_info.hStdOutput = out.write ();
-    startup_info.hStdError = err.write ();
-    startup_info.hStdInput = in.read ();
+    startup_info.hStdOutput = out.write.handle ();
+    startup_info.hStdError = err.write.handle ();
+    startup_info.hStdInput = in.read.handle ();
     startup_info.dwFlags |= STARTF_USESTDHANDLES;
 
     // Arguments
@@ -724,9 +790,9 @@ private:
     }
 
     // Don't inherit parent ends of pipes
-    SetHandleInformation (in.write (), HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation (out.read (), HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation (err.read (), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation (in.write.handle (), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation (out.read.handle (), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation (err.read.handle (), HANDLE_FLAG_INHERIT, 0);
 
     if (!CreateProcessA (
       nullptr,
@@ -745,11 +811,16 @@ private:
 
     CloseHandle (process_info.hThread);
 
-    detail::close_pipe (in.read ());
-    detail::close_pipe (out.write ());
-    detail::close_pipe (err.write ());
+    in.read.drop ();
+    out.write.drop ();
+    err.write.drop ();
 
-    return Child (process_info.hProcess, in.write (), out.read (), err.read ());
+    return Child (
+      process_info.hProcess,
+      std::move (in.write),
+      std::move (out.read),
+      std::move (err.read)
+    );
 
   #else
 
@@ -757,22 +828,18 @@ private:
     set_pipe (err, stderr_, stderr);
     set_pipe (in, stdin_, stdin);
 
-    int check[2];
-    pipe2 (check, O_CLOEXEC);
+    auto [input, output] = Anonymous_Pipe::create ();
 
     const pid_t pid = fork ();
     if (pid == 0) {
-      ::close (check[0]);
+      input.drop ();
       // Duplicate and close pipes
-      dup2 (out.write (), STDOUT_FILENO);
-      ::close (out.read ());
-      ::close (out.write ());
-      dup2 (err.write (), STDERR_FILENO);
-      ::close (err.read ());
-      ::close (err.write ());
-      dup2 (in.read (), STDIN_FILENO);
-      ::close (in.write ());
-      ::close (in.read ());
+      dup2 (out.write.handle (), STDOUT_FILENO);
+      out.drop ();
+      dup2 (err.write.handle (), STDERR_FILENO);
+      err.drop ();
+      dup2 (in.read.handle (), STDIN_FILENO);
+      in.drop ();
       // Arguments
       std::vector<char *> p_args;
       p_args.push_back (program_.data ());
@@ -797,30 +864,34 @@ private:
         execvp (program_.c_str (), p_args.data ());
       }
       const std::int32_t error = errno;
-      assert (::write (check[1], &error, 4) == 4);
+      assert (output.write (&error, 4));
       _exit (127);
     }
 
-    ::close (check[1]);
+    output.drop ();
 
-    close_pipe (in.read ());
-    close_pipe (out.write ());
-    close_pipe (err.write ());
+    in.read.drop ();
+    out.write.drop ();
+    err.write.drop ();
 
-    if (std::byte buf[4]{}; ::read (check[0], &buf, 4) == 4) {
-      ::close (check[0]);
+    if (std::int32_t error = 0; input.read (&error, 4).value () == 4) {
+      input.drop ();
     #if 0
-      const int error = std::bit_cast<std::uint32_t> (buf);
       std::fprintf (stderr, "%s: %s\n", program_.c_str (), std::strerror (error));
     #endif
-      close_pipe (in.write ());
-      close_pipe (out.read ());
-      close_pipe (err.read ());
+      in.write.drop ();
+      out.read.drop ();
+      err.read.drop ();
       return std::nullopt;
     }
-    ::close (check[0]);
+    input.drop ();
 
-    return Child (pid, in.write (), out.read (), err.read ());
+    return Child (
+      pid,
+      std::move (in.write),
+      std::move (out.read),
+      std::move (err.read)
+    );
   #endif
   }
 
@@ -840,30 +911,9 @@ inline void ignore_sigchld () {
 #endif
 }
 
-inline std::size_t write (Pipe_Handle handle, const char *data, std::size_t count) {
-#ifdef _WIN32
-  DWORD written;
-  WriteFile (handle, reinterpret_cast<const void *> (data), count, &written, nullptr);
-  return written;
-#else
-  return ::write (handle, reinterpret_cast<const void *> (data), count);
-#endif
-}
-
-inline std::size_t read (Pipe_Handle handle, char *out, std::size_t max_count) {
-#ifdef _WIN32
-  DWORD nread;
-  ReadFile (handle, reinterpret_cast<void *> (out), max_count, &nread, nullptr);
-  return nread;
-#else
-  return ::read (handle, reinterpret_cast<void *> (out), max_count);
-#endif
-}
-
 } // namespace spell
 
 inline std::ostream& operator<< (std::ostream &os, const spell::Exit_Status &exit_status) {
   os << "Exit_Status(" << exit_status.code () << ')';
   return os;
 }
-

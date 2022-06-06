@@ -8,7 +8,7 @@ int main () {
       .set_stdin (spell::Stdio::Piped)
       .cast ()
         .value ();
-    spell::write (c.get_stdin ().handle (), "A", 1);
+    c.get_stdin ().write ("A", 1);
     c.wait ();
   }
 
