@@ -88,11 +88,11 @@ private:
   std::size_t eq_;
 };
 
-bool operator== (const Env_Var &lhs, const Env_Var &rhs) {
+inline bool operator== (const Env_Var &lhs, const Env_Var &rhs) {
   return lhs.key () == rhs.key ();
 }
 
-bool operator== (const Env_Var &var, std::string_view key) {
+inline bool operator== (const Env_Var &var, std::string_view key) {
   return var.key () == key;
 }
 
@@ -117,7 +117,7 @@ using Env_Set = std::unordered_set<
 >;
 
 
-Pipe_Handle duplicate_pipe (Pipe_Handle h) {
+inline Pipe_Handle duplicate_pipe (Pipe_Handle h) {
 #ifdef _WIN32
   static const HANDLE proc = GetCurrentProcess ();
   HANDLE hh = INVALID_HANDLE_VALUE;
@@ -129,7 +129,7 @@ Pipe_Handle duplicate_pipe (Pipe_Handle h) {
 }
 
 
-void close_pipe (Pipe_Handle h) {
+inline void close_pipe (Pipe_Handle h) {
 #ifdef _WIN32
   CloseHandle (h);
 #else
@@ -352,7 +352,7 @@ struct Output {
 };
 
 
-bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
+inline bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
 #ifdef _WIN32
   static char buf[16];
   DWORD read;
@@ -403,7 +403,7 @@ public:
     }
   }
 
-  Pipe_Handle take () {
+  [[nodiscard]] Pipe_Handle take () {
     const auto r = handle ();
     handle_ = INVALID_PIPE;
     return r;
@@ -812,13 +812,13 @@ private:
   Stdio stdin_;
 };
 
-void ignore_sigchld () {
+inline void ignore_sigchld () {
 #ifndef _WIN32
   signal (SIGCHLD, SIG_IGN);
 #endif
 }
 
-std::size_t write (Pipe_Handle handle, const char *data, std::size_t count) {
+inline std::size_t write (Pipe_Handle handle, const char *data, std::size_t count) {
 #ifdef _WIN32
   DWORD written;
   WriteFile (handle, reinterpret_cast<const void *> (data), count, &written, nullptr);
@@ -828,7 +828,7 @@ std::size_t write (Pipe_Handle handle, const char *data, std::size_t count) {
 #endif
 }
 
-std::size_t read (Pipe_Handle handle, char *out, std::size_t max_count) {
+inline std::size_t read (Pipe_Handle handle, char *out, std::size_t max_count) {
 #ifdef _WIN32
   DWORD nread;
   ReadFile (handle, reinterpret_cast<void *> (out), max_count, &nread, nullptr);
@@ -840,7 +840,8 @@ std::size_t read (Pipe_Handle handle, char *out, std::size_t max_count) {
 
 } // namespace spell
 
-std::ostream& operator<< (std::ostream &os, const spell::Exit_Status &exit_status) {
+inline std::ostream& operator<< (std::ostream &os, const spell::Exit_Status &exit_status) {
   os << "Exit_Status(" << exit_status.code () << ')';
   return os;
 }
+
