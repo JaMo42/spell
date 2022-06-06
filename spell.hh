@@ -20,18 +20,21 @@
 #include <sys/ioctl.h>
 #endif
 
-#include <iostream>
-#include <thread>
-using namespace std::chrono_literals;
 
 namespace spell {
 
 #ifdef _WIN32
 using Pipe_Handle = HANDLE;
 using Pid = HANDLE;
+
+// Cannot use constexpr as the definition of INVALID_HANDLE_VALUE does a
+// reinterpret_cast: `((HANDLE)(LONG_PTR)-1)`
+const Pipe_Handle INVALID_PIPE = INVALID_HANDLE_VALUE;
 #else
 using Pipe_Handle = int;
 using Pid = pid_t;
+
+constexpr Pipe_Handle INVALID_PIPE = -1;
 #endif
 
 namespace detail {
@@ -113,6 +116,28 @@ using Env_Set = std::unordered_set<
   Env_Hash::transparent_key_equal
 >;
 
+
+Pipe_Handle duplicate_pipe (Pipe_Handle h) {
+#ifdef _WIN32
+  static const HANDLE proc = GetCurrentProcess ();
+  HANDLE hh = INVALID_HANDLE_VALUE;
+  DuplicateHandle (proc, h, proc, &hh, 0, TRUE, DUPLICATE_SAME_ACCESS);
+  return hh;
+#else
+  return dup (h);
+#endif
+}
+
+
+void close_pipe (Pipe_Handle h) {
+#ifdef _WIN32
+  CloseHandle (h);
+#else
+  ::close (h);
+#endif
+}
+
+
 class Pipe {
   Pipe (Pipe_Handle r, Pipe_Handle w)
   : read_handle_ (r),
@@ -120,19 +145,25 @@ class Pipe {
   {}
 
 public:
-  Pipe () {
+  Pipe ()
+  : read_handle_ (INVALID_PIPE),
+    write_handle_ (INVALID_PIPE)
+  {}
+
+  static Pipe create () {
   #ifdef _WIN32
     SECURITY_ATTRIBUTES sa = {
       .nLength = sizeof (SECURITY_ATTRIBUTES),
       .lpSecurityDescriptor = nullptr,
       .bInheritHandle = true
     };
-    CreatePipe (&read_handle_, &write_handle_, &sa, 0);
+    Pipe p{};
+    CreatePipe (&p.read_handle_, &p.write_handle_, &sa, 0);
+    return p;
   #else
     int p[2];
     pipe (p);
-    read_handle_ = p[0];
-    write_handle_ = p[1];
+    return Pipe (p[0], p[1]);
   #endif
   }
 
@@ -142,18 +173,17 @@ public:
     static HANDLE h = CreateFileA (
       "nul",
       GENERIC_READ | GENERIC_WRITE,
-      FILE_SHARE_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE,
       nullptr,
       OPEN_EXISTING,
-      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-      NULL
+      FILE_ATTRIBUTE_NORMAL,
+      nullptr
     );
     std::call_once (once_flag, []() {
       std::atexit ([]() {
         CloseHandle (h);
       });
     });
-    return Pipe (h, h);
   #else
     static FILE *s = fopen ("/dev/null", "r+");
     static int h = fileno (s);
@@ -162,19 +192,19 @@ public:
         fclose (s);
       });
     });
-    return Pipe (h, h);
   #endif
+    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
   }
 
 #ifdef _WIN32
   static Pipe inherit (int stream) {
-    HANDLE h = GetStdHandle (stream);
-    return Pipe (h, h);
+    const HANDLE h = GetStdHandle (stream);
+    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
   }
 #else
   static Pipe inherit (FILE *stream) {
-    int h = fileno (stream);
-    return Pipe (h, h);
+    const int h = fileno (stream);
+    return Pipe (duplicate_pipe (h), duplicate_pipe (h));
   }
 #endif
 
@@ -346,12 +376,49 @@ bool read_stream (Pipe_Handle handle, std::vector<char8_t> &out) {
 }
 
 
+class Child_Stream {
+public:
+  Child_Stream (Pipe_Handle h)
+  : handle_ (h)
+  {}
+
+  Child_Stream (Child_Stream &&from)
+  : handle_ (from.handle_)
+  {
+    from.handle_ = INVALID_PIPE;
+  }
+
+  ~Child_Stream () {
+    drop ();
+  }
+
+  Pipe_Handle handle () const {
+    return handle_;
+  }
+
+  void drop () {
+    if (handle_ != INVALID_PIPE) {
+      detail::close_pipe (handle_);
+      handle_ = INVALID_PIPE;
+    }
+  }
+
+  Pipe_Handle take () {
+    const auto r = handle ();
+    handle_ = INVALID_PIPE;
+    return r;
+  }
+
+private:
+  Pipe_Handle handle_;
+};
+
+
 class Child {
 protected:
-  explicit Child (Pid pid, bool p, Pipe_Handle i, Pipe_Handle o, Pipe_Handle e)
+  explicit Child (Pid pid, Pipe_Handle i, Pipe_Handle o, Pipe_Handle e)
   : pid_ (pid),
     status_ (-1),
-    stdin_is_piped_ (p),
     stdin_ (i),
     stdout_ (o),
     stderr_ (e)
@@ -383,24 +450,22 @@ public:
 
   Exit_Status wait () {
   #ifdef _WIN32
-    if (status_ != -1)
+    if (status_ != -1) {
       return Exit_Status (status_);
-    DWORD status;
-    if (stdin_is_piped_) {
-      CloseHandle (stdin_);
     }
+    stdin_.drop ();
+    DWORD status;
     WaitForSingleObject (id (), INFINITE);
     GetExitCodeProcess (id (), &status);
     CloseHandle (id ());
     return Exit_Status (status);
   #else
-    if (status_ != -1)
+    if (status_ != -1) {
       return Exit_Status (WEXITSTATUS (status_));
+    }
+    stdin_.drop ();
     int status;
     pid_t wpid;
-    if (stdin_is_piped_) {
-      close (stdin_);
-    }
     while ((wpid = waitpid (id (), &status, 0)) > 0) {}
     status_ = status;
     return Exit_Status (WEXITSTATUS (status));
@@ -409,8 +474,8 @@ public:
 
   Output wait_with_output () {
     Output o {wait ()};
-    read_stream (stdout_, o.stdout_);
-    read_stream (stderr_, o.stderr_);
+    read_stream (stdout_.handle (), o.stdout_);
+    read_stream (stderr_.handle (), o.stderr_);
     return o;
   }
 
@@ -426,15 +491,15 @@ public:
   #endif
   }
 
-  Pipe_Handle get_stdin () {
+  Child_Stream& get_stdin () {
     return stdin_;
   }
 
-  Pipe_Handle get_stdout () {
+  Child_Stream& get_stdout () {
     return stdout_;
   }
 
-  Pipe_Handle get_stderr () {
+  Child_Stream& get_stderr () {
     return stderr_;
   }
 
@@ -442,9 +507,9 @@ private:
   Pid pid_;
   int status_;
   bool stdin_is_piped_;
-  Pipe_Handle stdin_;
-  Pipe_Handle stdout_;
-  Pipe_Handle stderr_;
+  Child_Stream stdin_;
+  Child_Stream stdout_;
+  Child_Stream stderr_;
 };
 
 
@@ -615,7 +680,7 @@ private:
         p = Pipe::inherit (s);
       }
       break; case Stdio::Piped: {
-        p = Pipe ();
+        p = Pipe::create ();
       }
       break; case Stdio::Null: {
         p = Pipe::null ();
@@ -657,15 +722,9 @@ private:
     }
 
     // Don't inherit parent ends of pipes
-    if (stdin_ == Stdio::Piped) {
-      SetHandleInformation (in.write (), HANDLE_FLAG_INHERIT, 0);
-    }
-    if (stdout_ == Stdio::Piped) {
-      SetHandleInformation (out.read (), HANDLE_FLAG_INHERIT, 0);
-    }
-    if (stderr_ == Stdio::Piped) {
-      SetHandleInformation (err.read (), HANDLE_FLAG_INHERIT, 0);
-    }
+    SetHandleInformation (in.write (), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation (out.read (), HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation (err.read (), HANDLE_FLAG_INHERIT, 0);
 
     if (!CreateProcessA (
       nullptr,
@@ -684,14 +743,11 @@ private:
 
     CloseHandle (process_info.hThread);
 
-    if (stdin_ == Stdio::Piped)
-      CloseHandle (in.read ());
-    if (stdout_ == Stdio::Piped)
-      CloseHandle (out.write ());
-    if (stderr_ == Stdio::Piped)
-      CloseHandle (err.write ());
+    detail::close_pipe (in.read ());
+    detail::close_pipe (out.write ());
+    detail::close_pipe (err.write ());
 
-    return Child (process_info.hProcess, stdin_ == Stdio::Piped, in.write (), out.read (), err.read ());
+    return Child (process_info.hProcess, in.write (), out.read (), err.read ());
 
   #else
 
@@ -701,28 +757,16 @@ private:
 
     const pid_t pid = fork ();
     if (pid == 0) {
-      // Set streams
-      if (stdout_ != Stdio::Inherit) {
-        dup2 (out.write (), STDOUT_FILENO);
-        if (stdout_ == Stdio::Piped) {
-          close (out.read ());
-          close (out.write ());
-        }
-      }
-      if (stderr_ != Stdio::Inherit) {
-        dup2 (err.write (), STDERR_FILENO);
-        if (stderr_ == Stdio::Piped) {
-          close (err.read ());
-          close (err.write ());
-        }
-      }
-      if (stdin_ != Stdio::Inherit) {
-        dup2 (in.read (), STDIN_FILENO);
-        if (stdin_ == Stdio::Piped) {
-          close (in.write ());
-          close (in.read ());
-        }
-      }
+      // Duplicate and close pipes
+      dup2 (out.write (), STDOUT_FILENO);
+      close (out.read ());
+      close (out.write ());
+      dup2 (err.write (), STDERR_FILENO);
+      close (err.read ());
+      close (err.write ());
+      dup2 (in.read (), STDIN_FILENO);
+      close (in.write ());
+      close (in.read ());
       // Arguments
       std::vector<char *> p_args;
       p_args.push_back (program_.data ());
@@ -750,14 +794,11 @@ private:
       exit (1);
     }
 
-    if (stdin_ == Stdio::Piped)
-      close (in.read ());
-    if (stdout_ == Stdio::Piped)
-      close (out.write ());
-    if (stderr_ == Stdio::Piped)
-      close (err.write ());
+    close_pipe (in.read ());
+    close_pipe (out.write ());
+    close_pipe (err.write ());
 
-    return Child (pid, stdin_ == Stdio::Piped, in.write (), out.read (), err.read ());
+    return Child (pid, in.write (), out.read (), err.read ());
   #endif
   }
 
