@@ -17,4 +17,10 @@ int main () {
     c.wait ();
     std::cout << (c.kill () ? "yes" : "no") << std::endl;
   }
+
+  std::cout << 2 << std::endl;
+  {
+    auto s = spell::Spell ("i_do_not_exist");
+    std::cout << (s.cast ().has_value () ? "yes" : "no") << std::endl;
+  }
 }

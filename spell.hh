@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <span>
 #include <mutex>
+#include <cassert>
+#include <bit>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -18,8 +20,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>
 #endif
-
 
 namespace spell {
 
@@ -755,18 +757,22 @@ private:
     set_pipe (err, stderr_, stderr);
     set_pipe (in, stdin_, stdin);
 
+    int check[2];
+    pipe2 (check, O_CLOEXEC);
+
     const pid_t pid = fork ();
     if (pid == 0) {
+      ::close (check[0]);
       // Duplicate and close pipes
       dup2 (out.write (), STDOUT_FILENO);
-      close (out.read ());
-      close (out.write ());
+      ::close (out.read ());
+      ::close (out.write ());
       dup2 (err.write (), STDERR_FILENO);
-      close (err.read ());
-      close (err.write ());
+      ::close (err.read ());
+      ::close (err.write ());
       dup2 (in.read (), STDIN_FILENO);
-      close (in.write ());
-      close (in.read ());
+      ::close (in.write ());
+      ::close (in.read ());
       // Arguments
       std::vector<char *> p_args;
       p_args.push_back (program_.data ());
@@ -790,13 +796,29 @@ private:
       else {
         execvp (program_.c_str (), p_args.data ());
       }
-      // TODO: return nullopt from parent process
-      exit (1);
+      const std::int32_t error = errno;
+      assert (::write (check[1], &error, 4) == 4);
+      _exit (127);
     }
+
+    ::close (check[1]);
 
     close_pipe (in.read ());
     close_pipe (out.write ());
     close_pipe (err.write ());
+
+    if (std::byte buf[4]{}; ::read (check[0], &buf, 4) == 4) {
+      ::close (check[0]);
+    #if 0
+      const int error = std::bit_cast<std::uint32_t> (buf);
+      std::fprintf (stderr, "%s: %s\n", program_.c_str (), std::strerror (error));
+    #endif
+      close_pipe (in.write ());
+      close_pipe (out.read ());
+      close_pipe (err.read ());
+      return std::nullopt;
+    }
+    ::close (check[0]);
 
     return Child (pid, in.write (), out.read (), err.read ());
   #endif
