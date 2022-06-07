@@ -53,8 +53,27 @@ int main () {
       .cast_output ()
         .value ();
     if (c.stdout_.empty ()) {
+    #ifdef _WIN32
+      c.stderr_[c.stderr_.size () - 2] = 0;
+    #else
       c.stderr_.back () = 0;
+    #endif
       std::cout << reinterpret_cast<char *> (c.stderr_.data ()) << std::endl;
+    }
+  }
+
+  std::cout << 6 << std::endl;
+  {
+    auto c = spell::Spell ("programs/echo_stdin_char.exe")
+      .set_stdin (spell::Stdio::Piped)
+      .set_stdout (spell::Stdio::Piped)
+      .cast ()
+        .value ();
+    if (auto result = c.get_stdout ().write ("abc", 3); result.has_value ()) {
+      std::cout << result.value () << std::endl;
+    }
+    else {
+      std::cout << "write fail" << std::endl;
     }
   }
 }
