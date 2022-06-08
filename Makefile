@@ -14,4 +14,7 @@ clean:
 	$(MAKE) -C tests/programs clean
 	$(MAKE) -C tests clean
 
-.PHONY: build-tests clean
+doc:
+	doxygen
+
+.PHONY: build-tests clean doc
