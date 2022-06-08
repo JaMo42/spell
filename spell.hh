@@ -581,9 +581,30 @@ private:
 };
 
 
+/**
+ * Command builder.
+ *
+ * `Spell(program)` generates a spell in the default configuration.
+ * Additional builder methods allow the configuration to be changed prior to launch.
+ * All of these builder methods return a reference to the spell, unless stated otherwise.
+ */
 class Spell {
   using Self = Spell;
 public:
+  /**
+   * @brief Constructs a new `Spell` for launching the program at path `program`.
+   *
+   * It has the following configuration:
+   *  - No arguments to the program
+   *  - Inherit the environment of the current process
+   *  - Inherit the current working directory
+   *  - stdin/stdout/stderr are set to @ref Stdio::Default
+   *
+   *  If `program` is not an absolute path it is resolved by respective process
+   *  execution function (CreateProcess for Windows, execvpe for other platforms).
+   *
+   *  @param program - path or name of the program
+   */
   Spell (std::string_view program)
   : program_ (program),
     args_ {},
@@ -594,6 +615,9 @@ public:
     stdin_ (Stdio::Default)
   {}
 
+  /**
+   * @brief Returns the path to the program that was given to the constructor.
+   */
   std::string_view get_program () const {
     return program_;
   }
@@ -601,11 +625,26 @@ public:
   ////////////////////////////////////////////////////////////////////////
   // Arguments
 
+  /**
+   * @brief Adds an argument to pass to the program.
+   *
+   * These are quivalent to the individual `argv` elements so only one arguments can be passed per use.
+   * Use @ref args to pass multiple arguments.
+   *
+   * @param arg - the argument to add.
+   */
   Self& arg (std::string_view arg) {
     args_.emplace_back (arg);
     return *this;
   }
 
+  /**
+   * @brief Adds multiple arguments to add to the program.
+   *
+   * Use @ref arg to pass a single argument.
+   *
+   * @param args - the arguments to add.
+   */
   Self& args (const std::vector<std::string_view> &args) {
     for (const auto &a : args) {
       args_.emplace_back (a);
@@ -613,16 +652,23 @@ public:
     return *this;
   }
 
+  /// @copydoc args
   template <class... Args>
   Self& args (const Args&... args) {
     (args_.emplace_back (args), ...);
     return *this;
   }
 
+  /**
+   * @brief Returns a mutable reference to the arguments.
+   */
   Args& get_args () {
     return args_;
   }
 
+  /**
+   * @brief Returns a constant reference to the arguments.
+   */
   const Args& get_args () const {
     return args_;
   }
@@ -630,6 +676,11 @@ public:
   ////////////////////////////////////////////////////////////////////////
   // Environment
 
+  /**
+   * @brief Inserts or updates an environment variable.
+   * @param key - name of the variable
+   * @param val - value of the variable
+   */
   Self& env (std::string_view key, std::string_view val) {
     if (!env_.has_value ()) {
       env_.emplace ();
@@ -638,6 +689,10 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Adds of updates multiple environment variables.
+   * @param vars - Span of {key, value} pairs
+   */
   Self& envs (std::span<std::pair<std::string_view, std::string_view>> vars) {
     if (!env_.has_value ()) {
       env_.emplace ();
@@ -648,6 +703,9 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Clears the entire environment for the child process.
+   */
   Self& env_clear () {
     if (!env_.has_value ()) {
       env_.emplace (false);
@@ -658,6 +716,10 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Removes an environment variable.
+   * @param key - name of the variable.
+   */
   Self& env_remove (std::string_view key) {
     if (!env_.has_value ()) {
       env_.emplace ();
@@ -666,6 +728,11 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Get a mutable reference to the environment for the child process.
+   *
+   * See @ref Env.
+   */
   Env& get_envs () {
     if (!env_.has_value ()) {
       env_.emplace ();
@@ -673,6 +740,11 @@ public:
     return env_.value ();
   }
 
+  /**
+   * @brief Get a constant reference to the environment for the child process.
+   *
+   * See @ref Env.
+   */
   const Env& get_envs () const {
     if (!env_.has_value ()) {
       return Env::empty_env ();
@@ -683,6 +755,13 @@ public:
   ////////////////////////////////////////////////////////////////////////
   // Directory
 
+  /**
+   * @brief Sets the working directory for the child process.
+   *
+   * The given path gets canonicalized.
+   *
+   * @param dir - absolute or relative path to working directory.
+   */
   Self& current_dir (const std::filesystem::path &dir) {
     if (dir.is_absolute ())
       working_dir_ = dir;
@@ -691,22 +770,56 @@ public:
     return *this;
   }
 
+  /**
+   * @brief Returns the working directory for the child process.
+   */
   const std::filesystem::path &get_current_dir () const {
     return working_dir_;
   }
+
   ////////////////////////////////////////////////////////////////////////
   // Streams
 
+  /**
+   * @brief Configuration for the child process's standard output handle.
+   *
+   * Defaults to @ref Stdio::Inherit when used with @ref cast or @ref cast_status,
+   * and defaults to @ref Stdio::Piped when used with @ref cast_output.
+   *
+   * See @ref Stdio.
+   *
+   * @param cfg - new configuration or @ref Stdio::Default.
+   */
   Self& set_stdout (Stdio cfg) {
     stdout_ = cfg;
     return *this;
   }
 
+  /**
+   * @brief Configuration for the child process's standard error handle.
+   *
+   * Defaults to @ref Stdio::Inherit when used with @ref cast or @ref cast_status,
+   * and defaults to @ref Stdio::Piped when used with @ref cast_output.
+   *
+   * See @ref Stdio.
+   *
+   * @param cfg - new configuration or @ref Stdio::Default.
+   */
   Self& set_stderr (Stdio cfg) {
     stderr_ = cfg;
     return *this;
   }
 
+  /**
+   * @brief Configuration for the child process's standard input handle.
+   *
+   * Defaults to @ref Stdio::Inherit when used with @ref cast or @ref cast_status,
+   * and defaults to @ref Stdio::Piped when used with @ref cast_output.
+   *
+   * See @ref Stdio.
+   *
+   * @param cfg - new configuration or @ref Stdio::Default.
+   */
   Self& set_stdin (Stdio cfg) {
     stdin_ = cfg;
     return *this;
@@ -715,10 +828,24 @@ public:
   ////////////////////////////////////////////////////////////////////////
   // Running
 
+  /**
+   * @brief Executes the command as a child process, returning a handle to it.
+   *
+   * By default, stdin, stdout and stderr are inherited from the parent.
+   *
+   * @return a @ref Child for the child process or std::nullopt if execution failed.
+   */
   std::optional<Child> cast () {
     return do_cast (Stdio::Inherit);
   }
 
+  /**
+   * @brief Executes the command as a child process, waiting for it to finish and collecting its status.
+   *
+   * By default, stdin, stdout and stderr are inherited from the parent.
+   *
+   * @return the @ref Exit_Status of the child process or std::nullopt if execution failed.
+   */
   std::optional<Exit_Status> cast_status () {
     auto child = do_cast (Stdio::Inherit);
     if (child.has_value ())
@@ -726,6 +853,14 @@ public:
     return std::nullopt;
   }
 
+  /**
+   * @brief Executes the command as a child process, waiting for it to finish and collecting all of its output.
+   *
+   * By default stdout and stderr are captured and used to provide the resulting output.
+   * Stdin is captured and immediately closed.
+   *
+   * @return the @ref Output of the child process or std::nullopt if execution failed.
+   */
   std::optional<Output> cast_output () {
     auto child = do_cast (Stdio::Piped);
     if (child.has_value ()) {
