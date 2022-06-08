@@ -589,7 +589,6 @@ private:
  * All of these builder methods return a reference to the spell, unless stated otherwise.
  */
 class Spell {
-  using Self = Spell;
 public:
   /**
    * @brief Constructs a new `Spell` for launching the program at path `program`.
@@ -633,7 +632,7 @@ public:
    *
    * @param arg - the argument to add.
    */
-  Self& arg (std::string_view arg) {
+  Spell& arg (std::string_view arg) {
     args_.emplace_back (arg);
     return *this;
   }
@@ -645,7 +644,7 @@ public:
    *
    * @param args - the arguments to add.
    */
-  Self& args (const std::vector<std::string_view> &args) {
+  Spell& args (const std::vector<std::string_view> &args) {
     for (const auto &a : args) {
       args_.emplace_back (a);
     }
@@ -654,7 +653,7 @@ public:
 
   /// @copydoc args
   template <class... Args>
-  Self& args (const Args&... args) {
+  Spell& args (const Args&... args) {
     (args_.emplace_back (args), ...);
     return *this;
   }
@@ -681,7 +680,7 @@ public:
    * @param key - name of the variable
    * @param val - value of the variable
    */
-  Self& env (std::string_view key, std::string_view val) {
+  Spell& env (std::string_view key, std::string_view val) {
     if (!env_.has_value ()) {
       env_.emplace ();
     }
@@ -693,7 +692,7 @@ public:
    * @brief Adds of updates multiple environment variables.
    * @param vars - Span of {key, value} pairs
    */
-  Self& envs (std::span<std::pair<std::string_view, std::string_view>> vars) {
+  Spell& envs (std::span<std::pair<std::string_view, std::string_view>> vars) {
     if (!env_.has_value ()) {
       env_.emplace ();
     }
@@ -706,7 +705,7 @@ public:
   /**
    * @brief Clears the entire environment for the child process.
    */
-  Self& env_clear () {
+  Spell& env_clear () {
     if (!env_.has_value ()) {
       env_.emplace (false);
     }
@@ -720,7 +719,7 @@ public:
    * @brief Removes an environment variable.
    * @param key - name of the variable.
    */
-  Self& env_remove (std::string_view key) {
+  Spell& env_remove (std::string_view key) {
     if (!env_.has_value ()) {
       env_.emplace ();
     }
@@ -762,7 +761,7 @@ public:
    *
    * @param dir - absolute or relative path to working directory.
    */
-  Self& current_dir (const std::filesystem::path &dir) {
+  Spell& current_dir (const std::filesystem::path &dir) {
     if (dir.is_absolute ())
       working_dir_ = dir;
     else
@@ -790,7 +789,7 @@ public:
    *
    * @param cfg - new configuration or @ref Stdio::Default.
    */
-  Self& set_stdout (Stdio cfg) {
+  Spell& set_stdout (Stdio cfg) {
     stdout_ = cfg;
     return *this;
   }
@@ -805,7 +804,7 @@ public:
    *
    * @param cfg - new configuration or @ref Stdio::Default.
    */
-  Self& set_stderr (Stdio cfg) {
+  Spell& set_stderr (Stdio cfg) {
     stderr_ = cfg;
     return *this;
   }
@@ -820,7 +819,7 @@ public:
    *
    * @param cfg - new configuration or @ref Stdio::Default.
    */
-  Self& set_stdin (Stdio cfg) {
+  Spell& set_stdin (Stdio cfg) {
     stdin_ = cfg;
     return *this;
   }
