@@ -31,7 +31,7 @@ namespace spell {
 /** @var INVALID_PIPE
  * @brief Invalid pipe handle value.
  *
- * Represents a pipe handle that's closed or could not be created.
+ * Represents a pipe handle that's closed, uninitialzed, or could not be created.
  */
 #ifdef _WIN32
 /**
@@ -169,6 +169,9 @@ inline void close_pipe (Pipe_Handle h) {
 
 } // namespace detail
 
+/**
+ * @brief One end of an anonymous pipe.
+ */
 class Anonymous_Pipe {
   Anonymous_Pipe (Pipe_Handle h)
   : inner_ (h)
@@ -196,26 +199,6 @@ class Anonymous_Pipe {
 protected:
   using Pipes = Pipes_Base<Anonymous_Pipe>;
   friend class Spell;
-
-public:
-  Anonymous_Pipe ()
-  : inner_ (INVALID_PIPE)
-  {}
-
-  Anonymous_Pipe (Anonymous_Pipe &&from)
-  : inner_ (from.handle ())
-  {
-    from.inner_ = INVALID_PIPE;
-  }
-
-  ~Anonymous_Pipe () {
-    drop ();
-  }
-
-  Anonymous_Pipe& operator= (Anonymous_Pipe &&from) {
-    inner_ = from.take ();
-    return *this;
-  }
 
   static Pipes create () {
   #ifdef _WIN32
@@ -275,16 +258,68 @@ public:
     return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
   }
 
+public:
+  /**
+   * @brief Creates a new pipe with an invalid inner handle.
+   */
+  Anonymous_Pipe ()
+  : inner_ (INVALID_PIPE)
+  {}
+
+  /**
+   * @brief Takes the handle from another pipe.
+   *
+   * The pipe moved from gets invalidated.
+   */
+  Anonymous_Pipe (Anonymous_Pipe &&from)
+  : inner_ (from.handle ())
+  {
+    from.inner_ = INVALID_PIPE;
+  }
+
+  /**
+   * @brief Drops the pipe.
+   *
+   * See @ref drop.
+   */
+  ~Anonymous_Pipe () {
+    drop ();
+  }
+
+  /**
+   * @brief Takes the handle from another pipe.
+   *
+   * If this pipe already has a valid value it gets dropped.
+   *
+   * The pipe moved from gets invalidated.
+   */
+  Anonymous_Pipe& operator= (Anonymous_Pipe &&from) {
+    drop ();
+    inner_ = from.take ();
+    return *this;
+  }
+
+  /**
+   * @brief Returns the inner handle.
+   */
   Pipe_Handle handle () const {
     return inner_;
   }
 
+  /**
+   * @brief Invalidates the pipe and returns the handle it held.
+   */
   [[nodiscard]] Pipe_Handle take () {
     const auto h = handle ();
     inner_ = INVALID_PIPE;
     return h;
   }
 
+  /**
+   * @brief Drops the pipe.
+   *
+   * If it holds a valid handle it gets closed and the pipe is invalidated.
+   */
   void drop () {
     if (inner_ != INVALID_PIPE) {
       detail::close_pipe (inner_);
@@ -292,6 +327,12 @@ public:
     }
   }
 
+  /**
+   * @brief Reads from the pipe.
+   * @param buf - The buffer to read to.
+   * @param count - The number of bytes(!) to read.
+   * @return The number of bytes read or std::nullopt if reading failed.
+   */
   std::optional<std::size_t> read (auto *buf, std::size_t count) {
   #ifdef _WIN32
     DWORD nread;
@@ -310,11 +351,20 @@ public:
   #endif
   }
 
+  /**
+   * @brief Reads all data available in the pipe.
+   *
+   * The given vector gets cleared before reading.
+   *
+   * @param out - vector to write to.
+   * @return The number of bytes read of std::nullopt if reading failed.
+   */
   std::optional<std::size_t> read_all (std::vector<char> &out) {
   #ifdef _WIN32
     static char buf[64];
     DWORD nread;
     bool success;
+    out.clear ();
     do {
       if ((success = ReadFile (handle (), buf, sizeof (buf), &nread, nullptr))) {
         out.insert (out.end (), buf, buf + nread);
@@ -342,6 +392,12 @@ public:
   #endif
   }
 
+  /**
+   * @brief Writes the end pipe.
+   * @param buf - data to write.
+   * @param count - number of bytes(!) to write.
+   * @return number of bytes written or std::nullopt if writing failed.
+   */
   std::optional<std::size_t> write (auto *buf, std::size_t count) {
   #ifdef _WIN32
     DWORD written;
@@ -360,13 +416,21 @@ public:
   #endif
   }
 
-  bool write_all (const std::vector<char> &data) {
-    const char *p = data.data ();
-    std::size_t left = data.size ();
-    while (left) {
-      if (auto r = write (p, left); r.has_value ()) {
-        p += r.value ();
-        left -= r.value ();
+  /**
+   * @brief Writes all data from the given vector.
+   *
+   * Unlike write(), which may not write the requested number of bytes,
+   * this will keep writing until all data is written or a write fails.
+   *
+   * @param data - data to write.
+   * @param count - number of bytes(!) to write.
+   * @return whether writing was successful.
+   */
+  bool write_all (const auto *data, std::size_t count) {
+    while (count) {
+      if (auto r = write (data, count); r.has_value ()) {
+        data += r.value ();
+        count -= r.value ();
       }
       else {
         return false;
