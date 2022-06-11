@@ -331,7 +331,7 @@ public:
    * @brief Reads from the pipe.
    * @param buf - The buffer to read to.
    * @param count - The number of bytes(!) to read.
-   * @return The number of bytes read or std::nullopt if reading failed.
+   * @return The number of bytes read or `std::nullopt` if reading failed.
    */
   std::optional<std::size_t> read (auto *buf, std::size_t count) {
   #ifdef _WIN32
@@ -357,7 +357,7 @@ public:
    * The given vector gets cleared before reading.
    *
    * @param out - vector to write to.
-   * @return The number of bytes read of std::nullopt if reading failed.
+   * @return The number of bytes read of `std::nullopt` if reading failed.
    */
   std::optional<std::size_t> read_all (std::vector<char> &out) {
   #ifdef _WIN32
@@ -396,7 +396,7 @@ public:
    * @brief Writes the end pipe.
    * @param buf - data to write.
    * @param count - number of bytes(!) to write.
-   * @return number of bytes written or std::nullopt if writing failed.
+   * @return number of bytes written or `std::nullopt` if writing failed.
    */
   std::optional<std::size_t> write (auto *buf, std::size_t count) {
   #ifdef _WIN32
@@ -568,7 +568,7 @@ protected:
   friend class Spell;
 
   // Used by the Spell class to return a constant reference to an empty
-  // environment if its optional is std::nullopt.
+  // environment if its optional is `std::nullopt`.
   static const Env& empty_env () {
     const static Env instance {false};
     return instance;
@@ -642,7 +642,9 @@ struct Output {
   std::vector<char> stderr_;
 };
 
-
+/**
+ * @brief Representation of a running or exited child process.
+ */
 class Child {
 protected:
   Child (Pid pid, Anonymous_Pipe &&i, Anonymous_Pipe &&o, Anonymous_Pipe &&e)
@@ -655,10 +657,21 @@ protected:
   friend class Spell;
 
 public:
+  /**
+   * @brief Returns the process ID.
+   *
+   * Note: This is actually the processes handle on Windows.
+   */
   Pid id () const {
     return pid_;
   }
 
+  /**
+   * @brief Gets the exit status of the child if it has already exited.
+   *
+   * @return If the child has exited, then the exit status of the child if returned.
+   *         If the exit status is not available then `std::nullopt` is returned.
+   */
   std::optional<Exit_Status> try_wait () {
   #ifdef _WIN32
     if (WaitForSingleObject (id (), 0) == WAIT_OBJECT_0) {
@@ -677,6 +690,14 @@ public:
     return std::nullopt;
   }
 
+  /**
+   * @brief Waits for the child to exit, returning its exit status.
+   *
+   * This function will continue to have the same return value after it has
+   * been called at least once.
+   *
+   * The stdin of the child gets closed before waiting to prevent a deadlock.
+   */
   Exit_Status wait () {
   #ifdef _WIN32
     if (status_ != -1) {
@@ -701,6 +722,15 @@ public:
   #endif
   }
 
+  /**
+   * @brief Waits for the child to exit, collecting its remaining output and returning it.
+   *
+   * The returned @ref Output instance will continue to have the same exit status after it
+   * has been called at least once but the stdout and stderr will only contain data after
+   * the first call.
+   *
+   * The stdin of the child gets closed before waiting to prevent a deadlock.
+   */
   Output wait_with_output () {
     Output o {wait ()};
     stdout_.read_all (o.stdout_);
@@ -708,6 +738,14 @@ public:
     return o;
   }
 
+  /**
+   * @brief Forces the child process to exit.
+   *
+   * This is equivalent to sending a SIGKILL on Unix platforms and calling
+   * TerminateProcess on Windows.
+   *
+   * @return Whether the child was killed (`true`) or had already exited (`false`).
+   */
   bool kill () {
   #ifdef _WIN32
     if (TerminateProcess (id (), 0)) {
@@ -720,14 +758,23 @@ public:
   #endif
   }
 
+  /**
+   * @brief Returns a reference to the childs standard input (stdin).
+   */
   Anonymous_Pipe& get_stdin () {
     return stdin_;
   }
 
+  /**
+   * @brief Returns a reference to the childs standard output (stdout).
+   */
   Anonymous_Pipe& get_stdout () {
     return stdout_;
   }
 
+  /**
+   * @brief Returns a reference to the childs standard error (stderr).
+   */
   Anonymous_Pipe& get_stderr () {
     return stderr_;
   }
