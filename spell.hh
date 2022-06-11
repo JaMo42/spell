@@ -446,12 +446,20 @@ private:
 /// @brief List of command arguments.
 using Args = std::vector<std::string>;
 
-
+/**
+ * @brief An environment mapping.
+ */
 class Env {
 public:
   using iterator = detail::Env_Set::iterator;
 
 public:
+  /**
+   * @brief Creates an environment mapping thats either empty of copies the
+   *        current processes environment.
+   *
+   * @param load - Whether to load the current processes environment.
+   */
   Env (bool load = true)
   : data_ {}
   {
@@ -471,6 +479,12 @@ public:
     }
   }
 
+  /**
+   * @brief Gets the value of a variable.
+   *
+   * @param key - Name of the variable.
+   * @return value of the variable of an empty string if does not exist.
+   */
   std::string_view get (std::string_view key) const {
     if (auto it = data_.find (key); it != data_.end ()) {
       return it->value ();
@@ -478,10 +492,20 @@ public:
     return {};
   }
 
+  /**
+   * @brief Alias for @ref get().
+   *
+   * Can not be used to insert/change a value.
+   */
   std::string_view operator[] (std::string_view key) const {
     return get (key);
   }
 
+  /**
+   * @brief Insert of change a variable.
+   * @param key - Name of the variable.
+   * @param value - Value of the variable.
+   */
   void set (std::string_view key, std::string_view value) {
     if (auto it = data_.find (key); it != data_.end ()) {
       // The hashset gives us a constant iterator as we shouldn't mutate
@@ -495,12 +519,21 @@ public:
     }
   }
 
+  /**
+   * @brief Removes a variable.
+   * @param key - Name of the variable.
+   */
   void remove (std::string_view key) {
     if (auto it = data_.find (key); it != data_.end ()) {
       data_.erase (it);
     }
   }
 
+  /**
+   * @brief Change the name of a variable.
+   * @param key - Current name of the variable.
+   * @param key_key - Name to give to the variable.
+   */
   void rename (std::string_view key, std::string_view new_key) {
     if (auto it = data_.find (key); it != data_.end ()) {
       auto var = std::move (*it);
@@ -510,14 +543,23 @@ public:
     }
   }
 
+  /**
+   * @brief Removes all variables.
+   */
   void clear () {
     data_.clear ();
   }
 
+  /**
+   * @brief Returns an iterator pointing to the first element.
+   */
   iterator begin () {
     return data_.begin ();
   }
 
+  /**
+   * @brief Returns an iterator pointing to the past-the-end element.
+   */
   iterator end () {
     return data_.end ();
   }
@@ -525,6 +567,8 @@ public:
 protected:
   friend class Spell;
 
+  // Used by the Spell class to return a constant reference to an empty
+  // environment if its optional is std::nullopt.
   static const Env& empty_env () {
     const static Env instance {false};
     return instance;
@@ -534,7 +578,11 @@ private:
   detail::Env_Set data_;
 };
 
-
+/**
+ * @brief Describes what to do with a standard I/O stream for a child process.
+ *
+ * Used for the `set_stdin`, `set_stdout`, and `set_stderr` methods of @ref Spell.
+ */
 enum class Stdio {
   Default,
   Inherit,
@@ -543,16 +591,25 @@ enum class Stdio {
 };
 
 
+/**
+ * @brief Describes the result of a process.
+ */
 class Exit_Status {
 public:
   explicit Exit_Status (int code)
   : code_ (code)
   {}
 
+  /**
+   * @brief Returns the exit code.
+   */
   int code () const {
     return code_;
   }
 
+  /**
+   * @brief Was the exit status zero?
+   */
   bool success () const {
     return code () == 0;
   }
@@ -561,7 +618,9 @@ private:
   int code_;
 };
 
-
+/**
+ * @brief The output of a finished process.
+ */
 struct Output {
   Output (Exit_Status &&s)
   : status (s),
@@ -569,8 +628,17 @@ struct Output {
     stderr_ {}
   {}
 
+  /**
+   * The status of the process.
+   */
   Exit_Status status;
+  /**
+   * The data that the process wrote to stdout.
+   */
   std::vector<char> stdout_;
+  /**
+   * The data that the process wrote to stderr.
+   */
   std::vector<char> stderr_;
 };
 
