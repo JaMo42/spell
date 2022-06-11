@@ -1,3 +1,6 @@
+/** @file spell.hh
+ * @brief Single-header C++ subprocess library.
+ */
 #pragma once
 #include <cstring>
 #include <string>
@@ -25,15 +28,40 @@
 
 namespace spell {
 
+/** @var INVALID_PIPE
+ * @brief Invalid pipe handle value.
+ *
+ * Represents a pipe handle that's closed or could not be created.
+ */
 #ifdef _WIN32
+/**
+ * @brief A pipe handle.
+ *
+ * Represent the pipes HANDLE.
+ */
 using Pipe_Handle = HANDLE;
+/**
+ * @brief A process ID.
+ *
+ * Represents the processes HANDLE, not the actual process id.
+ */
 using Pid = HANDLE;
 
 // Cannot use constexpr as the definition of INVALID_HANDLE_VALUE does a
 // reinterpret_cast: `((HANDLE)(LONG_PTR)-1)`
 const Pipe_Handle INVALID_PIPE = INVALID_HANDLE_VALUE;
 #else
+/**
+ * @brief A pipe handle.
+ *
+ * Represents the pipes file descriptor.
+ */
 using Pipe_Handle = int;
+/**
+ * @brief Pid a process ID.
+ *
+ * Represents the processes pid.
+ */
 using Pid = pid_t;
 
 constexpr Pipe_Handle INVALID_PIPE = -1;
@@ -165,8 +193,9 @@ class Anonymous_Pipe {
     }
   };
 
-public:
+protected:
   using Pipes = Pipes_Base<Anonymous_Pipe>;
+  friend class Spell;
 
 public:
   Anonymous_Pipe ()
@@ -199,7 +228,7 @@ public:
     CreatePipe (&r, &w, &sa, 0);
     return Pipes {r, w};
   #else
-    int p[2];
+    int p[2] = { INVALID_PIPE, INVALID_PIPE };
     pipe2 (p, O_CLOEXEC);
     return Pipes {p[0], p[1]};
   #endif
@@ -350,8 +379,7 @@ private:
   Pipe_Handle inner_;
 };
 
-using Pipes = Anonymous_Pipe::Pipes;
-
+/// @brief List of command arguments.
 using Args = std::vector<std::string>;
 
 
@@ -871,9 +899,9 @@ public:
 private:
   std::optional<Child> do_cast (Stdio default_cfg) {
     using namespace detail;
-    Pipes out, err, in;
+    Anonymous_Pipe::Pipes out, err, in;
 
-    auto set_pipe = [default_cfg](Pipes &p, Stdio &cfg, auto s) {
+    auto set_pipe = [default_cfg](Anonymous_Pipe::Pipes &p, Stdio &cfg, auto s) {
       if (cfg == Stdio::Default) {
         cfg = default_cfg;
       }
@@ -1039,6 +1067,12 @@ private:
   Stdio stdin_;
 };
 
+/**
+ * @brief Sets the SIGCHLD handler to SIG_IGN on unix platforms.
+ *
+ * When SIGCHLD is ignored you can just launch a child process and never await
+ * it without getting a zombie child.
+ */
 inline void ignore_sigchld () {
 #ifndef _WIN32
   signal (SIGCHLD, SIG_IGN);
@@ -1047,7 +1081,25 @@ inline void ignore_sigchld () {
 
 } // namespace spell
 
+/**
+ * @brief Prints the given environment variable in form "<key>=<value>".
+ */
+inline std::ostream& operator<< (std::ostream &os, const spell::detail::Env_Var &var) {
+  return os << var.unwrap ();
+}
+
+/**
+ * @brief Prints the given child process handle in form "Child(<pid>)"
+ */
+inline std::ostream& operator<< (std::ostream &os, const spell::Child &child) {
+  return os << "Child(" << child.id () << ')';
+}
+
+/**
+ * @brief Prints the given exit status in form "Exit_Status(<code>)".
+ */
 inline std::ostream& operator<< (std::ostream &os, const spell::Exit_Status &exit_status) {
   os << "Exit_Status(" << exit_status.code () << ')';
   return os;
 }
+
