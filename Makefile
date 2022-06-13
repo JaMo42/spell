@@ -17,4 +17,7 @@ clean:
 doc:
 	doxygen
 
+example: example.cc spell.hh
+	$(CXX) -std=c++20 -o example $<
+
 .PHONY: build-tests clean doc

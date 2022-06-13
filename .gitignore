@@ -3,3 +3,4 @@ doc/
 tests/*.exe
 tests/programs/*.exe
 spell.hh.gch
+example

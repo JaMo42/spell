@@ -1,5 +1,5 @@
 /** @file spell.hh
- * @brief Single-header C++ subprocess library.
+ * @brief Single header C++ subprocess library.
  */
 #pragma once
 #include <cstring>
