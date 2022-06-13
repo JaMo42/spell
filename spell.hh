@@ -632,14 +632,34 @@ struct Output {
    * The status of the process.
    */
   Exit_Status status;
+
   /**
    * The data that the process wrote to stdout.
    */
   std::vector<char> stdout_;
+
   /**
    * The data that the process wrote to stderr.
    */
   std::vector<char> stderr_;
+
+  /**
+   * @brief Constructs a container out of the data that the process wrote to stdout.
+   * @tparam Container Any type that can be constructed from a begin-end pair of iterators over `char`s.
+   */
+  template <class Container>
+    Container collect_stdout () const {
+      return Container { stdout_.begin (), stdout_.end () };
+    }
+
+  /**
+   * @brief Constructs a container out of the data that the process wrote to stderr.
+   * @tparam Container Any type that can be constructed from a begin-end pair of iterators over `char`s.
+   */
+  template <class Container>
+    Container collect_stderr () const {
+      return Container { stderr_.begin (), stderr_.end () };
+    }
 };
 
 /**

@@ -38,12 +38,10 @@ int main () {
     if (c.stderr_.empty ()) {
       // Remove newline
     #ifdef _WIN32
-      // Need to remove \r\n
-      c.stdout_[c.stdout_.size () - 2] = 0;
-    #else
-      c.stdout_.back () = 0;
+      c.stdout_.pop_back ();
     #endif
-      std::cout << reinterpret_cast<char *> (c.stdout_.data ()) << std::endl;
+      c.stdout_.pop_back ();
+      std::cout << c.collect_stdout<std::string_view> () << std::endl;
     }
   }
 
@@ -53,12 +51,12 @@ int main () {
       .cast_output ()
         .value ();
     if (c.stdout_.empty ()) {
+      // Remove newline
     #ifdef _WIN32
-      c.stderr_[c.stderr_.size () - 2] = 0;
-    #else
-      c.stderr_.back () = 0;
+      c.stderr_.pop_back ();
     #endif
-      std::cout << reinterpret_cast<char *> (c.stderr_.data ()) << std::endl;
+      c.stderr_.pop_back ();
+      std::cout << c.collect_stderr<std::string_view> () << std::endl;
     }
   }
 
