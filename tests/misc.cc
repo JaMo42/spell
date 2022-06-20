@@ -23,4 +23,15 @@ int main () {
     auto s = spell::Spell ("i_do_not_exist");
     std::cout << (s.cast ().has_value () ? "yes" : "no") << std::endl;
   }
+
+  std::cout << 3 << std::endl;
+  {
+    spell::Spell::from_string ("echo Hello World").cast ()->wait ();
+    spell::Spell::from_string ("echo 'Hello World'").cast ()->wait ();
+    spell::Spell::from_string ("echo '\\'Hello World\\''").cast ()->wait ();
+    spell::Spell::from_string ("echo '\"Hello World\"'").cast ()->wait ();
+    spell::Spell::from_string ("echo H'ell'o World").cast ()->wait ();
+    spell::Spell::from_string ("echo 안녕'하세'요").cast ()->wait ();
+  }
 }
+

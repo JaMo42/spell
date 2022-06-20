@@ -840,6 +840,75 @@ public:
   {}
 
   /**
+   * @brief Constructs a spell from the given command line string.
+   *
+   * Takes a string containing a program and it's argument (for example 'echo Hello World')
+   * and turns it into a spell for that program with the given arguments.
+   *
+   * @param command_line - Space-delimited string of the program and it's arguments.
+   *                       Spaces can be escaped with a blackslash and are ignored
+   *                       inside a string. Strings use either single or double quotes,
+   *                       the quotes will not be included in the argument added to the
+   *                       spell.
+   * @return A @ref Spell object with arguments from the given command line string.
+   */
+  static Spell from_string (std::string_view command_line) {
+    std::string chomped;
+    auto chomp = [&] () -> const std::string& {
+      auto it = command_line.begin ();
+      const auto end = command_line.end ();
+      auto in_string = '\0';
+      chomped.clear ();
+      for (; it != end; ++it) {
+        switch (*it) {
+          case '\\':
+            ++it;
+            if (it == end) {
+              break;
+            }
+            chomped.push_back (*it);
+            break;
+          case '\'':
+          case '"':
+            if (in_string == '\0') {
+              in_string = *it;
+            }
+            else if (*it == in_string) {
+              in_string = '\0';
+            }
+            else {
+              chomped.push_back (*it);
+            }
+            break;
+          case ' ':
+            if (in_string == '\0') {
+              goto break_;
+            }
+            else {
+              chomped.push_back (' ');
+            }
+            break;
+          default:
+            chomped.push_back (*it);
+            break;
+        }
+      }
+    break_:
+      command_line.remove_prefix (std::distance (command_line.begin (), it));
+      while (command_line.front () == ' ') {
+        command_line.remove_prefix (1);
+      }
+      return chomped;
+    };
+    auto spell = Spell (chomp ());
+    std::string_view arg;
+    while (!(arg = chomp ()).empty ()) {
+      spell.arg (arg);
+    }
+    return spell;
+  }
+
+  /**
    * @brief Returns the path to the program that was given to the constructor.
    */
   std::string_view get_program () const {
