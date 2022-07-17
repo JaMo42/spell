@@ -2,26 +2,27 @@
  * @brief Single header C++ subprocess library.
  */
 #pragma once
+#include <algorithm>
+#include <cassert>
 #include <cstring>
+#include <filesystem>
+#include <mutex>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <unordered_set>
-#include <optional>
-#include <filesystem>
-#include <span>
-#include <mutex>
-#include <cassert>
+#include <vector>
 
 #ifdef _WIN32
 #include <Windows.h>
 #else
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/ioctl.h>
-#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace spell {
