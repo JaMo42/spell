@@ -69,13 +69,13 @@ constexpr Pipe_Handle INVALID_PIPE = -1;
 namespace detail {
 class Env_Var {
 public:
-  Env_Var (std::string_view data)
+  explicit Env_Var (std::string_view data)
   : data_ (data)
   {
     eq_ = data_.find ('=');
   }
 
-  Env_Var (std::string_view key, std::string_view value)
+  explicit Env_Var (std::string_view key, std::string_view value)
   : data_ {}
   {
     const auto value_off = key.size () + 1;
@@ -487,7 +487,7 @@ public:
    * @return value of the variable of an empty string if does not exist.
    */
   std::string_view get (std::string_view key) const {
-    if (auto it = data_.find (key); it != data_.end ()) {
+    if (auto it = find (key); it != data_.end ()) {
       return it->value ();
     }
     return {};
@@ -496,7 +496,7 @@ public:
   /**
    * @brief Alias for @ref get().
    *
-   * Can not be used to insert/change a value.
+   * Cannot be used to insert/change a value.
    */
   std::string_view operator[] (std::string_view key) const {
     return get (key);
@@ -508,7 +508,7 @@ public:
    * @param value - Value of the variable.
    */
   void set (std::string_view key, std::string_view value) {
-    if (auto it = data_.find (key); it != data_.end ()) {
+    if (auto it = find (key); it != data_.end ()) {
       // The hashset gives us a constant iterator as we shouldn't mutate
       // elements of a set. However both hashing and comparison of `Env_Var`s
       // only depends on the key part so we can safely change the value here.
@@ -525,7 +525,7 @@ public:
    * @param key - Name of the variable.
    */
   void remove (std::string_view key) {
-    if (auto it = data_.find (key); it != data_.end ()) {
+    if (auto it = find (key); it != data_.end ()) {
       data_.erase (it);
     }
   }
@@ -536,7 +536,7 @@ public:
    * @param key_key - Name to give to the variable.
    */
   void rename (std::string_view key, std::string_view new_key) {
-    if (auto it = data_.find (key); it != data_.end ()) {
+    if (auto it = find (key); it != data_.end ()) {
       auto var = std::move (*it);
       var.key (new_key);
       data_.erase (it);
@@ -563,6 +563,27 @@ public:
    */
   iterator end () {
     return data_.end ();
+  }
+
+private:
+  detail::Env_Set::iterator find (std::string_view key)
+  {
+  #if defined (__cpp_lib_generic_unordered_lookup) && __cpp_lib_generic_unordered_lookup == 201811L
+    return data_.find (key);
+  #else
+    const auto search = detail::Env_Var (key, std::string_view ());
+    return data_.find (search);
+  #endif
+  }
+
+  detail::Env_Set::const_iterator find (std::string_view key) const
+  {
+  #if defined (__cpp_lib_generic_unordered_lookup) && __cpp_lib_generic_unordered_lookup == 201811L
+    return data_.find (key);
+  #else
+    const auto search = detail::Env_Var (key, std::string_view ());
+    return data_.find (search);
+  #endif
   }
 
 protected:
