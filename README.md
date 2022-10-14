@@ -5,7 +5,7 @@ Single header C++ subprocess library.
 ## Requirements
 
 The library requires C++20.
-The implementation is split into Windows and non-Windows platforms (only tested on Linux).
+The implementation is split into Windows and non-Windows platforms.
 
 ## Usage
 
