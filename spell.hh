@@ -229,7 +229,7 @@ protected:
   #endif
 
   static Pipes create_null () {
-    static std::once_flag once_flag;
+    static bool first_call = true;
   #ifdef _WIN32
     static HANDLE h = CreateFileA (
       "nul",
@@ -240,19 +240,21 @@ protected:
       FILE_ATTRIBUTE_NORMAL,
       nullptr
     );
-    std::call_once (once_flag, []() {
+    if (first_call) {
+      first_call = false;
       std::atexit ([]() {
         CloseHandle (h);
       });
-    });
+    }
   #else
     static FILE *s = fopen ("/dev/null", "r+");
     static int h = fileno (s);
-    std::call_once (once_flag, []() {
+    if (first_call) {
+      first_call = false;
       std::atexit ([]() {
         fclose (s);
       });
-    });
+    }
   #endif
     return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
   }
