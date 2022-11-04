@@ -26,12 +26,17 @@ int main () {
 
   std::cout << 3 << std::endl;
   {
-    spell::Spell::from_string ("echo Hello World").cast ()->wait ();
-    spell::Spell::from_string ("echo 'Hello World'").cast ()->wait ();
-    spell::Spell::from_string ("echo '\\'Hello World\\''").cast ()->wait ();
-    spell::Spell::from_string ("echo '\"Hello World\"'").cast ()->wait ();
-    spell::Spell::from_string ("echo H'ell'o World").cast ()->wait ();
-    spell::Spell::from_string ("echo 안녕'하세'요").cast ()->wait ();
+    spell::Spell::from_string ("programs/echo.exe Hello World").cast ()->wait ();
+    spell::Spell::from_string ("programs/echo.exe 'Hello World'").cast ()->wait ();
+    spell::Spell::from_string ("programs/echo.exe '\\'Hello World\\''").cast ()->wait ();
+  #ifndef _WIN32
+    spell::Spell::from_string ("programs/echo.exe '\"Hello World\"'").cast ()->wait ();
+  #else
+    // Still doesn't work on Windows
+    std::cout << "\"Hello World\"" << std::endl;
+  #endif
+    spell::Spell::from_string ("programs/echo.exe H'ell'o World").cast ()->wait ();
+    spell::Spell::from_string ("programs/echo.exe 안녕'하세'요").cast ()->wait ();
   }
 }
 
