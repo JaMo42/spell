@@ -57,12 +57,17 @@ int main () {
 
   std::cout << 6 << std::endl;
   {
+  #ifdef _WIN32
+    const char *path = "Path";
+  #else
+    const char *path = "PATH";
+  #endif
           auto mut          = spell::Spell("");
     const auto cnst         = spell::Spell("");
     const auto &mut_env     = mut.get_envs();
     const auto &const_env   = cnst.get_envs();
-    const auto mut_exists   = (mut_env.get("PATH").empty() ? "no" : "yes");
-    const auto const_exists = (const_env.get("PATH").empty() ? "no" : "yes");
+    const auto mut_exists   = (mut_env.get(path).empty() ? "no" : "yes");
+    const auto const_exists = (const_env.get(path).empty() ? "no" : "yes");
     std::cout << mut_exists << ' ' << const_exists << std::endl;
   }
 }
