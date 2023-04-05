@@ -54,4 +54,15 @@ int main () {
     env.set ("a", "1");
     std::cout << env["a"] << std::endl;
   }
+
+  std::cout << 6 << std::endl;
+  {
+          auto mut          = spell::Spell("");
+    const auto cnst         = spell::Spell("");
+    const auto &mut_env     = mut.get_envs();
+    const auto &const_env   = cnst.get_envs();
+    const auto mut_exists   = (mut_env.get("PATH").empty() ? "no" : "yes");
+    const auto const_exists = (const_env.get("PATH").empty() ? "no" : "yes");
+    std::cout << mut_exists << ' ' << const_exists << std::endl;
+  }
 }

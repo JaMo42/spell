@@ -466,19 +466,26 @@ public:
   : data_ {}
   {
     if (load) {
-    #ifdef _WIN32
-      LPCH envp = GetEnvironmentStrings ();
-      std::size_t len;
-      while ((len = std::strlen (envp)) != 0) {
-        data_.emplace (envp);
-        envp += len + 1;
-      }
-    #else
-      for (char **envp = environ; *envp; ++envp) {
-        data_.emplace (*envp);
-      }
-    #endif
+      this->load();
     }
+  }
+
+  /**
+   * @brief Loads the current environment from the system.
+   */
+  void load() {
+  #ifdef _WIN32
+    LPCH envp = GetEnvironmentStrings ();
+    std::size_t len;
+    while ((len = std::strlen (envp)) != 0) {
+      data_.emplace (envp);
+      envp += len + 1;
+    }
+  #else
+    for (char **envp = environ; *envp; ++envp) {
+      data_.emplace (*envp);
+    }
+  #endif
   }
 
   /**
@@ -613,7 +620,11 @@ protected:
   // Used by the Spell class to return a constant reference to an empty
   // environment if its optional is `std::nullopt`.
   static const Env& empty_env () {
-    const static Env instance {false};
+    static Env instance {false};
+    // The running processes environment may have changed between calls so we
+    // need to load it every time this is called.
+    instance.clear();
+    instance.load();
     return instance;
   }
 
