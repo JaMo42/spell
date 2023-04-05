@@ -34,12 +34,32 @@ def diff (a, b):
     sys.stdout.write ("\x1b[0m\n")
 
 
+def run_command(test, use_valgrind):
+  if use_valgrind:
+    program = os.path.join(os.getcwd(), test) + ".exe"
+    return (
+      "valgrind",
+      "-q",
+      "--leak-check=full",
+      "--track-fds=yes",
+      "--track-origins=yes",
+      "--show-leak-kinds=all",
+      program,
+    )
+  else:
+    return (f"./{test}.exe",)
+
+
 def main ():
+  use_valgrind = "-vg" in sys.argv
+  tests = [i for i in sys.argv[1:] if i[0] != '-']
+
   os.chdir ("tests")
-  tests = [
-      f[:-4] for f in os.listdir ()
-    if f.endswith (".exe") and not os.path.isdir (f)
-  ]
+  if not tests:
+    tests = [
+        f[:-4] for f in os.listdir ()
+      if f.endswith (".exe") and not os.path.isdir (f)
+    ]
 
   for test in tests:
     expected_file = test + ".expected"
@@ -48,7 +68,7 @@ def main ():
               color="\x1b[33m")
       continue
     printf ("Running: {}", test, color="\x1b[32m")
-    p = subprocess.run ((f"./{test}.exe",), stdout=subprocess.PIPE)
+    p = subprocess.run(run_command(test, use_valgrind), stdout=subprocess.PIPE)
     output = p.stdout.decode ("utf-8").strip ()
     if os.name == "nt":
       output = output.replace ("\r\n", '\n')

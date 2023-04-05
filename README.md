@@ -34,7 +34,14 @@ This can be build using `make example`.
 
 Run `make doc` to generate doxygen HTML documentation in `doc/html`.
 
+The library is currently not thread safe.
+
 ## Tests
 
 `make build-tests` builds the testing programs, `./test` or `python test` runs them.
+
+Synopsis: `test [-vg] [TEST...]`
+
+If `-vg` is passed tests are run with valgrind.
+All other arguments are treated as test names, if none are provided all tests are run.
 
