@@ -1255,6 +1255,10 @@ private:
     // Environment
     std::string environment {};
     if (env_.has_value ()) {
+      // Could iterate over the environment to determine the size here
+      // but instead we just reserve the amount if each key and value
+      // were 1 byte long.
+      environment.reserve(env_->data_.size() * 4);
       for (const auto &env : *env_) {
         environment.append (env.unwrap ());
         environment.push_back ('\0');
@@ -1314,6 +1318,7 @@ private:
       in.drop ();
       // Arguments
       std::vector<char *> p_args;
+      p_args.reserve(args_.size() + 1);
       p_args.push_back (program_.data ());
       std::transform (args_.begin (), args_.end (), std::back_inserter (p_args),
         [] (std::string &a) -> char * {
@@ -1324,6 +1329,7 @@ private:
       // Environment
       if (env_.has_value ()) {
         std::vector<char *> p_envs;
+        p_envs.reserve(env_->data_.size());
         std::transform (env_->begin (), env_->end (), std::back_inserter (p_envs),
           [] (const Env_Var &v) -> char * {
             return const_cast<char *> (v.unwrap ().data ());
