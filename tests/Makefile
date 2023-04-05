@@ -1,5 +1,5 @@
 CXX?=clang++
-CXXFLAGS?=-std=c++20 -I..
+CXXFLAGS?=-std=c++20 -I.. -gdwarf-4
 
 SRC=$(wildcard *.cc)
 BIN=$(patsubst %.cc,%.exe,$(SRC))

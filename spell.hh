@@ -229,9 +229,8 @@ protected:
   #endif
 
   static Pipes create_null () {
-    static bool first_call = true;
   #ifdef _WIN32
-    static HANDLE h = CreateFileA (
+    HANDLE h = CreateFileA (
       "nul",
       GENERIC_READ | GENERIC_WRITE,
       FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -240,23 +239,10 @@ protected:
       FILE_ATTRIBUTE_NORMAL,
       nullptr
     );
-    if (first_call) {
-      first_call = false;
-      std::atexit ([]() {
-        CloseHandle (h);
-      });
-    }
   #else
-    static FILE *s = fopen ("/dev/null", "r+");
-    static int h = fileno (s);
-    if (first_call) {
-      first_call = false;
-      std::atexit ([]() {
-        fclose (s);
-      });
-    }
+    int h = open("/dev/null", O_RDWR);
   #endif
-    return Pipes {detail::duplicate_pipe (h), detail::duplicate_pipe (h)};
+    return Pipes{h, h};
   }
 
 public:
@@ -1349,6 +1335,7 @@ private:
       }
       const std::int32_t error = errno;
       assert (output.write (&error, 4));
+      output.drop();
       _exit (127);
     }
 
