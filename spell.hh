@@ -582,7 +582,8 @@ public:
 private:
   detail::Env_Set::iterator find (std::string_view key)
   {
-  #if defined (__cpp_lib_generic_unordered_lookup) && __cpp_lib_generic_unordered_lookup == 201811L
+  #if (defined (__cpp_lib_generic_unordered_lookup) \
+       && __cpp_lib_generic_unordered_lookup == 201811L)
     return data_.find (key);
   #else
     const auto search = detail::Env_Var (key, std::string_view ());
@@ -592,7 +593,8 @@ private:
 
   detail::Env_Set::const_iterator find (std::string_view key) const
   {
-  #if defined (__cpp_lib_generic_unordered_lookup) && __cpp_lib_generic_unordered_lookup == 201811L
+  #if (defined (__cpp_lib_generic_unordered_lookup) \
+       && __cpp_lib_generic_unordered_lookup == 201811L)
     return data_.find (key);
   #else
     const auto search = detail::Env_Var (key, std::string_view ());
@@ -1336,6 +1338,9 @@ private:
       const std::int32_t error = errno;
       assert (output.write (&error, 4));
       output.drop();
+      // Need to manually run the destructors we want.
+      p_args.~vector();
+      this->~Spell();
       _exit (127);
     }
 
