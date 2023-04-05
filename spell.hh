@@ -453,6 +453,7 @@ using Args = std::vector<std::string>;
 class Env {
 public:
   using iterator = detail::Env_Set::iterator;
+  using const_iterator = detail::Env_Set::const_iterator;
 
 public:
   /**
@@ -558,11 +559,31 @@ public:
     return data_.begin ();
   }
 
+  /// @copydoc begin
+  const_iterator begin() const {
+    return data_.begin();
+  }
+
+  /// @copydoc begin
+  const_iterator cbegin() const {
+    return data_.cbegin();
+  }
+
   /**
    * @brief Returns an iterator pointing to the past-the-end element.
    */
   iterator end () {
     return data_.end ();
+  }
+
+  /// @copydoc end
+  const_iterator end() const {
+    return data_.end();
+  }
+
+  /// @copydoc end
+  const_iterator cend() const {
+    return data_.cend();
   }
 
 private:
