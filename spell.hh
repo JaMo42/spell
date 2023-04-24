@@ -30,7 +30,7 @@ namespace spell {
 /** @var INVALID_PIPE
  * @brief Invalid pipe handle value.
  *
- * Represents a pipe handle that's closed, uninitialzed, or could not be created.
+ * Represents a pipe handle that's closed, uninitialized, or could not be created.
  */
 #ifdef _WIN32
 /**
@@ -443,7 +443,7 @@ public:
 
 public:
   /**
-   * @brief Creates an environment mapping thats either empty of copies the
+   * @brief Creates an environment mapping that's either empty or copies the
    *        current processes environment.
    *
    * @param load - Whether to load the current processes environment.
@@ -965,7 +965,7 @@ public:
   /**
    * @brief Adds an argument to pass to the program.
    *
-   * These are quivalent to the individual `argv` elements so only one arguments can be passed per use.
+   * These are equivalent to the individual `argv` elements so only one arguments can be passed per use.
    * Use @ref args to pass multiple arguments.
    *
    * @param arg - the argument to add.
