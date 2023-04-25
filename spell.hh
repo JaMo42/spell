@@ -1399,6 +1399,59 @@ inline void ignore_sigchld () {
 #endif
 }
 
+/**
+ * @brief Launches the given process as an orphan on unix platforms.
+ *
+ * Such a process will be a child of the init process rather than the calling
+ * process. The spawned process will not terminate when the calling process
+ * terminates and does (and cannot) be awaited in order to prevent a zombie.
+ *
+ * The calling process will not be able to communicate with the I/O streams of
+ * the child and therefor this function will set all the streams to
+ * `Stdio::Null` before spawning the process.
+ *
+ * Only the `id` and `kill` functions on the returned child will work.
+ * Note that the `try_wait`, `wait`, and `wait_with_output` functions do not
+ * check for errors and will pretend to return successfully with a bogus value.
+ *
+ * On Windows this just spawns the process normally.
+ */
+std::optional<Child> orphan(Spell &spell) {
+#ifndef _WIN32
+    constexpr auto RESULT_SIZE = sizeof(std::optional<Child>);
+    int pipe[2];
+    if (pipe2(pipe, O_CLOEXEC) < 0) {
+        return std::nullopt;
+    }
+    const auto tx = pipe[1];
+    const auto rx = pipe[0];
+    spell
+        .set_stdout(Stdio::Null)
+        .set_stderr(Stdio::Null)
+        .set_stdin(Stdio::Null);
+    const auto pid = fork();
+    if (pid < 0) {
+        return std::nullopt;
+    }
+    if (pid == 0) {
+        close(rx);
+        setsid();
+        const auto result = spell.cast();
+        write(tx, reinterpret_cast<const void *>(&result), RESULT_SIZE);
+        close(tx);
+        _exit(0);
+    }
+    close(tx);
+    waitpid(pid, nullptr, 0);
+    std::optional<Child> child;
+    read(rx, reinterpret_cast<void *>(&child), RESULT_SIZE);
+    close(rx);
+    return child;
+#else
+    return spell.cast();
+#endif
+}
+
 } // namespace spell
 
 /**
@@ -1422,4 +1475,3 @@ inline std::ostream& operator<< (std::ostream &os, const spell::Exit_Status &exi
   os << "Exit_Status(" << exit_status.code () << ')';
   return os;
 }
-
